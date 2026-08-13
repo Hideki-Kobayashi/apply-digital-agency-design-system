@@ -96,13 +96,19 @@ macOSとLinuxでは通常`python3`、Windowsでは通常`py -3`を使う。
 `--network-approved`は利用者の同意を確認した後にだけ付ける。
 30日未満でも明示的に最新版を確認する場合は`--force`を追加する。
 
+HTMLのリンク抽出方式は既定の`auto`に任せる。
+`auto`は`ax`が見つかれば取得済みHTMLの解析に自動で使い、見つからなければPython標準ライブラリを使う。
+`ax`は推奨だが任意であり、導入を更新確認の前提にしない。
+公式サイトとの通信とZIPの保存は、どちらの場合もPython標準ライブラリが行う。
+動作確認などで方式を固定する場合だけ、`--link-parser ax`または`--link-parser stdlib`を追加する。
+
 ```sh
 <python> <skill-root>/scripts/manage_upstream.py check \
   --network-approved
 ```
 
-- `unchanged`：確認成功日時を更新し、変更なしと報告する。
-- `candidate_created`または`candidate_exists`：候補ID、取得元、ハッシュ、追加、変更、削除の件数を報告する。
+- `unchanged`：確認成功日時を更新し、リンク抽出方式と変更なしを報告する。
+- `candidate_created`または`candidate_exists`：リンク抽出方式、候補ID、取得元、ハッシュ、追加、変更、削除の件数を報告する。
 - `skipped_fresh`：30日未満のため外部確認を省略したと報告する。
 - 失敗：`last_successful_check_at`と有効スナップショットを変更せず、失敗した取得先と理由を報告する。
 
