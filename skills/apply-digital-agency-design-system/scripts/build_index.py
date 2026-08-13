@@ -75,7 +75,11 @@ def scan_snapshot(snapshot_dir: Path) -> dict[str, Any]:
     source_urls: dict[str, str] = {}
     official_count = 0
 
-    for path in sorted(snapshot_dir.rglob("*.md")):
+    markdown_paths = sorted(
+        snapshot_dir.rglob("*.md"),
+        key=lambda path: tuple(path.relative_to(snapshot_dir).as_posix().split("/")),
+    )
+    for path in markdown_paths:
         relative_path = path.relative_to(snapshot_dir).as_posix()
         metadata = parse_front_matter(path)
         entry: dict[str, Any] = {

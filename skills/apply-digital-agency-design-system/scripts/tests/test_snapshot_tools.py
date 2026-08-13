@@ -33,6 +33,11 @@ class SnapshotTests(unittest.TestCase):
         self.assertEqual(2, index["auxiliary_document_count"])
         self.assertEqual("v2.17.0", index["dads_version"])
 
+    def test_source_index_order_is_platform_independent(self) -> None:
+        paths = [entry["path"] for entry in scan_snapshot(self.snapshot_dir)["files"]]
+        expected = sorted(paths, key=lambda path: tuple(path.split("/")))
+        self.assertEqual(expected, paths)
+
     def test_recorded_index_matches_snapshot(self) -> None:
         result = verify_snapshot(self.snapshot_dir, self.index_file)
         self.assertTrue(result["ok"], result["errors"])
