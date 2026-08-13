@@ -1,0 +1,10 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+skills/apply-digital-agency-design-system/references/update-status.json
+skills/apply-digital-agency-design-system/references/update-status.json.lock
+skills/apply-digital-agency-design-system/references/candidates/

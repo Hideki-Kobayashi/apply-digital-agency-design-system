@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "previous_snapshot_id": null,
+  "active_snapshot": {
+    "id": "2026-08-05",
+    "path": "upstream/2026-08-05",
+    "index_path": "upstream/2026-08-05/source-index.json",
+    "index_sha256": "3cd717f67a6aef27aa1a85af8193705ef90df9158b8beddf1eec0a318c6e38b8",
+    "dads_version": "v2.17.0",
+    "archive": {
+      "published_on": "2026-08-05",
+      "url": "https://design.digital.go.jp/dads/dads-markdown-20260805.zip",
+      "sha256": "cde548789a744f53d87997cbefec1ec7feacf8fb3b023bfe9ea07a713de2c8d8",
+      "verified_on": "2026-08-12"
+    },
+    "corpus": {
+      "markdown_count": 125,
+      "official_document_count": 123,
+      "auxiliary_document_count": 2,
+      "tree_sha256": "4916e6665882c90b20e0cc665500b249c9214e82f81028eea93c932eab4a557b"
+    }
+  }
+}

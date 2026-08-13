@@ -1,0 +1,28 @@
+# License scope
+
+This repository contains material under separate terms.
+
+## MIT-licensed original material
+
+Except for the Digital Agency material described below, original source code,
+tests, workflow instructions, repository documentation, and metadata created
+for this project are licensed under the MIT License in `LICENSES/MIT.txt`.
+
+## Digital Agency Design System material
+
+The following material originates from, reproduces, summarizes, indexes, or
+adapts the Digital Agency Design System:
+
+- `skills/apply-digital-agency-design-system/references/upstream/**`
+- `skills/apply-digital-agency-design-system/references/foundation-map.md`
+- `skills/apply-digital-agency-design-system/references/task-index.md`
+- Any portions of other files that reproduce or adapt Digital Agency Design
+  System content
+
+That material is not relicensed under the MIT License. It is used under the
+Digital Agency's applicable terms, including the Public Data License 1.0 and
+the source-specific attribution and modification requirements described in
+`NOTICE.md`.
+
+Third-party rights, logos, trademarks, fonts, icons, and other excluded
+material remain subject to their respective terms.

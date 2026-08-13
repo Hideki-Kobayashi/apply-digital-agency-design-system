@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "contract_version": 1,
+  "freshness_days": 30,
+  "allowed_hosts": [
+    "design.digital.go.jp"
+  ],
+  "sources": {
+    "resources_page": {
+      "url": "https://design.digital.go.jp/dads/resources/",
+      "markdown_link_selector": "a[href*='dads-markdown-'][href$='.zip']"
+    },
+    "feed": {
+      "url": "https://design.digital.go.jp/dads/feed.xml"
+    }
+  }
+}
