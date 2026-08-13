@@ -96,19 +96,22 @@ macOSとLinuxでは通常`python3`、Windowsでは通常`py -3`を使う。
 `--network-approved`は利用者の同意を確認した後にだけ付ける。
 30日未満でも明示的に最新版を確認する場合は`--force`を追加する。
 
-HTMLのリンク抽出方式は既定の`auto`に任せる。
-`auto`は`ax`が見つかれば取得済みHTMLの解析に自動で使い、見つからなければPython標準ライブラリを使う。
+取得バックエンドは既定の`auto`に任せる。
+`auto`は`ax`が見つかれば公式ページの取得、リンク抽出、ZIP保存を`ax`へ任せ、見つからなければPython標準ライブラリを使う。
 `ax`は推奨だが任意であり、導入を更新確認の前提にしない。
-公式サイトとの通信とZIPの保存は、どちらの場合もPython標準ライブラリが行う。
-動作確認などで方式を固定する場合だけ、`--link-parser ax`または`--link-parser stdlib`を追加する。
+`ax`経路はリダイレクト後の最終URLを検証するが、途中の転送先を通信前に検証できない。
+転送先も事前制限する必要がある場合は、`--fetch-backend stdlib`を使う。
+一度選んだバックエンドが失敗しても、別のバックエンドへ暗黙に切り替えない。
+取得後のURL・容量・ZIP形式の確認、ハッシュ計算、差分作成、状態保存はPythonで行う。
+動作確認などで方式を固定する場合だけ、`--fetch-backend ax`または`--fetch-backend stdlib`を追加する。
 
 ```sh
 <python> <skill-root>/scripts/manage_upstream.py check \
   --network-approved
 ```
 
-- `unchanged`：確認成功日時を更新し、リンク抽出方式と変更なしを報告する。
-- `candidate_created`または`candidate_exists`：リンク抽出方式、候補ID、取得元、ハッシュ、追加、変更、削除の件数を報告する。
+- `unchanged`：確認成功日時を更新し、取得バックエンドと変更なしを報告する。
+- `candidate_created`または`candidate_exists`：取得バックエンド、候補ID、取得元、ハッシュ、追加、変更、削除の件数を報告する。
 - `skipped_fresh`：30日未満のため外部確認を省略したと報告する。
 - 失敗：`last_successful_check_at`と有効スナップショットを変更せず、失敗した取得先と理由を報告する。
 
@@ -120,10 +123,12 @@ HTMLのリンク抽出方式は既定の`auto`に任せる。
 1. 候補内の`candidate-manifest.json`と`diff-summary.json`を読む。
 2. `verify_snapshot.py`で候補を検証する。
 
+候補の既定保存先は、利用者別状態ディレクトリ内の`candidates`である。
+
 ```sh
 <python> <skill-root>/scripts/verify_snapshot.py \
-  --snapshot-dir <skill-root>/references/candidates/<候補ID>/snapshot \
-  --index-file <skill-root>/references/candidates/<候補ID>/source-index.json
+  --snapshot-dir <state-dir>/candidates/<候補ID>/snapshot \
+  --index-file <state-dir>/candidates/<候補ID>/source-index.json
 ```
 
 3. 追加、変更、削除された公式文書を読み、`task-index.md`と`foundation-map.md`への影響を確認する。

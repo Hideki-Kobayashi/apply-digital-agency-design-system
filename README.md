@@ -41,13 +41,17 @@ Python部分はmacOS、Linux、Windowsに対応しています。
 
 ## 任意の推奨ツール
 
-公式更新の確認では、[`ax`](https://github.com/yusukebe/ax)が見つかる場合、最新ZIPのリンク抽出に自動で使います。
+公式更新の確認では、[`ax`](https://github.com/yusukebe/ax)が見つかる場合、公式ページの取得、最新ZIPのリンク抽出、ZIPの保存を自動で任せます。
 
 `ax`はHTMLから必要なリンクを簡潔かつ明示的に抽出できるため、このリポジトリでは推奨しています。
 
 ただし、インストールは必須ではありません。
 
-`ax`が見つからない場合は、Python標準ライブラリで同じリンクを抽出します。
+`ax`が見つからない場合は、Python標準ライブラリが更新確認全体を代行します。
+
+`ax`経路では、`ax`がHTTPリダイレクトを自動追従します。
+リダイレクト後の最終URLは公式ホストか検証しますが、途中の転送先は通信前に検証できません。
+転送先も通信前に制限したい場合は、`--fetch-backend stdlib`を使います。
 
 ## インストール
 
@@ -101,15 +105,15 @@ Skillは起動時に利用者別のローカル状態だけを読みます。
 
 変更が見つかった場合は候補として保存し、候補IDを指定した別の承認があるまで有効版を切り替えません。
 
-HTMLのリンク抽出方式は既定で`auto`です。
+取得バックエンドは既定で`auto`です。
 
-- `ax`が見つかる場合は、取得済みのHTMLを`ax`で解析する。
-- 見つからない場合はPython標準ライブラリを使う。
-- 選択した方式が失敗しても、別の方式で暗黙に再試行しない。
+- `ax`が見つかる場合は、外部通信とHTML解析を`ax`へ任せる。
+- 見つからない場合は、Python標準ライブラリで外部通信とHTML解析を行う。
+- 更新確認の開始時に一つを選び、処理の途中で別のバックエンドへ切り替えない。
 
-公式サイトとの通信とZIPの保存は、どちらの場合もPython標準ライブラリで行い、同じURL・TLS・容量制限を適用します。
+取得後のURL・容量・ZIP形式の確認、ハッシュ計算、差分作成、状態保存は、どちらの場合もPythonで行います。
 
-動作確認などでリンク抽出方式を固定する場合は、更新確認コマンドへ`--link-parser ax`または`--link-parser stdlib`を指定できます。
+動作確認などで取得バックエンドを固定する場合は、更新確認コマンドへ`--fetch-backend ax`または`--fetch-backend stdlib`を指定できます。
 
 実行状態と候補の既定保存先は次のとおりです。
 
@@ -129,12 +133,15 @@ skills/apply-digital-agency-design-system/
 ├── agents/openai.yaml
 ├── references/
 │   ├── foundation-map.md
-│   ├── task-index.md
 │   ├── source-manifest.json
+│   ├── task-index.md
+│   ├── update-contract.json
 │   └── upstream/2026-08-05/
 └── scripts/
+    ├── build_index.py
     ├── manage_upstream.py
     ├── search_guidance.py
+    ├── upstream_fetch.py
     ├── verify_snapshot.py
     └── tests/
 ```
@@ -149,7 +156,7 @@ python3 -m unittest discover \
   -v
 ```
 
-テストには、30日判定、同意前の外部通信禁止、リンク抽出方式の自動選択、URL・TLS・容量制限、更新候補と昇格の分離、公式スナップショットのハッシュ検証、参照索引の整合性が含まれます。
+テストには、30日判定、同意前の外部通信禁止、取得バックエンドの自動選択、URL・TLS・容量とZIPの安全確認、更新候補と昇格の分離、公式スナップショットのハッシュ検証、参照索引の整合性が含まれます。
 
 GitHub ActionsではmacOS、Linux、Windowsで同じテストを実行します。
 

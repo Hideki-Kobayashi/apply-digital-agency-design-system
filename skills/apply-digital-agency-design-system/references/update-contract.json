@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contract_version": 2,
+  "contract_version": 3,
   "freshness_days": 30,
   "allowed_hosts": [
     "design.digital.go.jp"
@@ -9,11 +9,6 @@
     "/dads/"
   ],
   "archive_path_pattern": "^/dads/dads-markdown-[0-9]{8}\\.zip$",
-  "archive_content_types": [
-    "application/zip",
-    "application/x-zip-compressed",
-    "application/octet-stream"
-  ],
   "sources": {
     "resources_page": {
       "url": "https://design.digital.go.jp/dads/resources/",
@@ -21,9 +16,6 @@
         "href_contains": "dads-markdown-",
         "href_suffix": ".zip"
       }
-    },
-    "feed": {
-      "url": "https://design.digital.go.jp/dads/feed.xml"
     }
   }
 }

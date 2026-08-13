@@ -10,28 +10,16 @@ import json
 import os
 import re
 import shutil
-import ssl
-import subprocess
 import sys
 import tempfile
 import unicodedata
 import zipfile
 from collections.abc import Iterator
-from dataclasses import dataclass
-from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin, urlparse
-from urllib.request import (
-    HTTPRedirectHandler,
-    HTTPSHandler,
-    ProxyHandler,
-    Request,
-    build_opener,
-)
 
 from build_index import SnapshotError, atomic_write_json, scan_snapshot, sha256_file
+from upstream_fetch import UpstreamError, select_fetch_backend
 from verify_snapshot import verify_snapshot
 
 if os.name == "nt":
@@ -44,82 +32,13 @@ RFC3339_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 CANDIDATE_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR_ENV = "DADS_SKILL_STATE_DIR"
-NETWORK_TIMEOUT_SECONDS = 60
-MAX_PAGE_BYTES = 5 * 1024 * 1024
-MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 100 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 10_000
-HTTP_USER_AGENT = (
-    "apply-digital-agency-design-system update-check "
-    "(+https://github.com/Hideki-Kobayashi/apply-digital-agency-design-system)"
-)
 WINDOWS_RESERVED_NAME_PATTERN = re.compile(
     r"^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)",
     re.IGNORECASE,
 )
 WINDOWS_INVALID_PATH_CHARACTERS = frozenset('<>:"|?*')
-
-
-class UpstreamError(RuntimeError):
-    """Raised when an update operation cannot complete safely."""
-
-
-@dataclass(frozen=True)
-class SourcePolicy:
-    allowed_hosts: frozenset[str]
-    allowed_path_prefixes: tuple[str, ...]
-    archive_path_pattern: re.Pattern[str]
-    archive_content_types: frozenset[str]
-
-
-class AnchorHrefParser(HTMLParser):
-    """Collect anchor href values without requiring an HTML dependency."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.hrefs: list[str] = []
-
-    def handle_starttag(
-        self, tag: str, attributes: list[tuple[str, str | None]]
-    ) -> None:
-        if tag.casefold() != "a":
-            return
-        for name, value in attributes:
-            if name.casefold() == "href" and value:
-                self.hrefs.append(value)
-                return
-
-
-class AllowedRedirectHandler(HTTPRedirectHandler):
-    """Reject redirects that leave the official source policy."""
-
-    max_redirections = 5
-
-    def __init__(self, policy: SourcePolicy, require_archive: bool) -> None:
-        super().__init__()
-        self.policy = policy
-        self.require_archive = require_archive
-
-    def redirect_request(
-        self,
-        request: Request,
-        file_pointer: Any,
-        code: int,
-        message: str,
-        headers: Any,
-        new_url: str,
-    ) -> Request | None:
-        ensure_allowed_url(new_url, self.policy, self.require_archive)
-        redirected = super().redirect_request(
-            request, file_pointer, code, message, headers, new_url
-        )
-        if redirected is None or request.get_method() != "HEAD":
-            return redirected
-        return Request(
-            new_url,
-            headers=dict(request.header_items()),
-            method="HEAD",
-        )
 
 
 def utc_now() -> dt.datetime:
@@ -169,14 +88,17 @@ def load_object(path: Path) -> dict[str, Any]:
 
 def load_state_or_default(state_file: Path, manifest: dict[str, Any]) -> dict[str, Any]:
     if state_file.exists():
-        return load_object(state_file)
+        state = load_object(state_file)
+        state.pop("source_validators", None)
+        state.setdefault("source_verification", {})
+        return state
     return {
         "schema_version": 1,
         "checked_contract_version": None,
         "last_attempted_at": None,
         "last_successful_check_at": None,
         "last_check_result": None,
-        "source_validators": {},
+        "source_verification": {},
         "active_snapshot_id": manifest["active_snapshot"]["id"],
         "pending_candidate_ids": [],
     }
@@ -298,340 +220,6 @@ def exclusive_lock(state_file: Path) -> Iterator[None]:
                 msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
             else:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-
-
-def source_policy(contract: dict[str, Any]) -> SourcePolicy:
-    try:
-        return SourcePolicy(
-            allowed_hosts=frozenset(contract["allowed_hosts"]),
-            allowed_path_prefixes=tuple(contract["allowed_path_prefixes"]),
-            archive_path_pattern=re.compile(contract["archive_path_pattern"]),
-            archive_content_types=frozenset(contract["archive_content_types"]),
-        )
-    except (KeyError, TypeError, re.error) as error:
-        raise UpstreamError(f"更新契約のURL方針を解析できません: {error}") from error
-
-
-def ensure_allowed_url(
-    url: str,
-    policy: SourcePolicy,
-    require_archive: bool = False,
-) -> None:
-    if any(ord(character) < 32 or ord(character) == 127 for character in url):
-        raise UpstreamError("取得先URLに制御文字があります")
-    try:
-        parsed = urlparse(url)
-        port = parsed.port
-    except ValueError as error:
-        raise UpstreamError(f"取得先URLを解析できません: {url}") from error
-
-    path_allowed = any(
-        parsed.path.startswith(prefix) for prefix in policy.allowed_path_prefixes
-    )
-    archive_allowed = (
-        not require_archive
-        or policy.archive_path_pattern.fullmatch(parsed.path) is not None
-    )
-    if (
-        parsed.scheme != "https"
-        or parsed.hostname not in policy.allowed_hosts
-        or parsed.username is not None
-        or parsed.password is not None
-        or port not in (None, 443)
-        or not path_allowed
-        or not archive_allowed
-        or bool(parsed.query)
-        or bool(parsed.fragment)
-    ):
-        raise UpstreamError(f"許可されていない取得先です: {url}")
-
-
-def resolve_link_parser(requested: str) -> str:
-    if requested == "auto":
-        return "ax" if shutil.which("ax") else "stdlib"
-    if requested == "ax":
-        if shutil.which("ax") is None:
-            raise UpstreamError(
-                "axコマンドが見つかりません。"
-                "--link-parser stdlibを使うか、axをインストールしてください"
-            )
-        return "ax"
-    if requested == "stdlib":
-        return "stdlib"
-    raise UpstreamError(f"未対応のリンク抽出方式です: {requested}")
-
-
-def run_ax_json(arguments: list[str], input_text: str) -> Any:
-    executable = shutil.which("ax")
-    if executable is None:
-        raise UpstreamError("axコマンドが見つかりません")
-    try:
-        completed = subprocess.run(
-            [executable, *arguments],
-            check=False,
-            capture_output=True,
-            input=input_text,
-            text=True,
-            encoding="utf-8",
-            errors="strict",
-            timeout=NETWORK_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired as error:
-        raise UpstreamError("axによるリンク抽出が時間内に完了しませんでした") from error
-    if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip()
-        raise UpstreamError(f"axによるリンク抽出に失敗しました: {detail}")
-    try:
-        return json.loads(completed.stdout)
-    except json.JSONDecodeError as error:
-        raise UpstreamError(f"axのJSON出力を解析できません: {error}") from error
-
-
-@contextlib.contextmanager
-def open_source_response(
-    url: str,
-    policy: SourcePolicy,
-    method: str = "GET",
-    require_archive: bool = False,
-    allowed_content_types: frozenset[str] | None = None,
-) -> Iterator[Any]:
-    ensure_allowed_url(url, policy, require_archive)
-    request = Request(
-        url,
-        headers={
-            "Accept": "*/*",
-            "Accept-Encoding": "identity",
-            "User-Agent": HTTP_USER_AGENT,
-        },
-        method=method,
-    )
-    tls_context = ssl.create_default_context()
-    tls_context.minimum_version = ssl.TLSVersion.TLSv1_2
-    opener = build_opener(
-        # 環境プロキシを暗黙利用すると取得経路が端末ごとに変わるため無効にする。
-        ProxyHandler({}),
-        HTTPSHandler(context=tls_context),
-        AllowedRedirectHandler(policy, require_archive),
-    )
-    try:
-        response = opener.open(request, timeout=NETWORK_TIMEOUT_SECONDS)
-    except (HTTPError, URLError, TimeoutError) as error:
-        raise UpstreamError(
-            f"公式ソースの取得に失敗しました: {url}: {error}"
-        ) from error
-
-    try:
-        final_url = response.geturl()
-        ensure_allowed_url(final_url, policy, require_archive)
-        status = getattr(response, "status", None)
-        if status != 200:
-            raise UpstreamError(
-                f"公式ソースが成功応答を返しませんでした: {final_url}: HTTP {status}"
-            )
-        content_encoding = response.headers.get("Content-Encoding")
-        if content_encoding and content_encoding.casefold() != "identity":
-            raise UpstreamError(
-                f"圧縮されたHTTP応答は受け付けません: {content_encoding}"
-            )
-        content_type = response.headers.get_content_type().casefold()
-        if allowed_content_types and content_type not in allowed_content_types:
-            raise UpstreamError(f"Content-Typeが更新契約と一致しません: {content_type}")
-        yield response
-    finally:
-        response.close()
-
-
-def response_content_length(response: Any) -> int | None:
-    value = response.headers.get("Content-Length")
-    if value is None:
-        return None
-    try:
-        length = int(value)
-    except (TypeError, ValueError) as error:
-        raise UpstreamError(f"Content-Lengthを解析できません: {value!r}") from error
-    if length < 0:
-        raise UpstreamError(f"Content-Lengthが負の値です: {length}")
-    return length
-
-
-def response_validator(response: Any) -> dict[str, Any]:
-    return {
-        "url": response.geturl(),
-        "etag": response.headers.get("ETag"),
-        "last_modified": response.headers.get("Last-Modified"),
-        "content_type": response.headers.get_content_type().casefold(),
-        "content_length": response_content_length(response),
-    }
-
-
-def read_bounded_response(response: Any, max_bytes: int) -> bytes:
-    declared_length = response_content_length(response)
-    if declared_length is not None and declared_length > max_bytes:
-        raise UpstreamError(
-            f"取得サイズが上限を超えています: {declared_length} > {max_bytes}"
-        )
-
-    chunks: list[bytes] = []
-    total = 0
-    while chunk := response.read(min(1024 * 1024, max_bytes + 1 - total)):
-        total += len(chunk)
-        if total > max_bytes:
-            raise UpstreamError(f"取得サイズが上限を超えています: {max_bytes}")
-        chunks.append(chunk)
-    return b"".join(chunks)
-
-
-def archive_urls_from_html(
-    document: str,
-    contains: str,
-    ends_with: str,
-    base_url: str,
-    policy: SourcePolicy,
-) -> list[str]:
-    if not contains or not ends_with:
-        raise UpstreamError("アーカイブのリンク条件が空です")
-
-    parser = AnchorHrefParser()
-    parser.feed(document)
-    urls: list[str] = []
-    for href in parser.hrefs:
-        if contains not in href or not href.endswith(ends_with):
-            continue
-        archive_url = urljoin(base_url, href)
-        ensure_allowed_url(archive_url, policy, require_archive=True)
-        if archive_url not in urls:
-            urls.append(archive_url)
-    return urls
-
-
-def archive_urls_with_ax(
-    document: str,
-    link_rule: dict[str, str],
-    base_url: str,
-    policy: SourcePolicy,
-) -> list[str]:
-    contains = link_rule["href_contains"]
-    ends_with = link_rule["href_suffix"]
-    if any(character in contains + ends_with for character in "'[]"):
-        raise UpstreamError("ax用のリンク条件へ安全に変換できません")
-    selector = f"a[href*='{contains}'][href$='{ends_with}']"
-    rows = run_ax_json(
-        [
-            "-",
-            selector,
-            "--row",
-            "href=@href",
-            "--json",
-            "--all",
-            "--no-cache",
-        ],
-        input_text=document,
-    )
-    if not isinstance(rows, list):
-        raise UpstreamError(f"Markdown ZIPのリンクを一意に取得できません: {rows!r}")
-    urls: list[str] = []
-    for row in rows:
-        if not isinstance(row, dict) or not row.get("href"):
-            raise UpstreamError(f"Markdown ZIPのリンクを解析できません: {row!r}")
-        archive_url = urljoin(base_url, row["href"])
-        ensure_allowed_url(archive_url, policy, require_archive=True)
-        if archive_url not in urls:
-            urls.append(archive_url)
-    return urls
-
-
-def find_current_archive(
-    contract: dict[str, Any],
-    policy: SourcePolicy,
-    link_parser: str,
-) -> tuple[str, dict[str, Any]]:
-    resource = contract["sources"]["resources_page"]
-    resource_url = resource["url"]
-    with open_source_response(
-        resource_url,
-        policy,
-        allowed_content_types=frozenset({"text/html"}),
-    ) as response:
-        document_bytes = read_bounded_response(response, MAX_PAGE_BYTES)
-        validator = response_validator(response)
-        charset = response.headers.get_content_charset() or "utf-8"
-        try:
-            document = document_bytes.decode(charset)
-        except (LookupError, UnicodeDecodeError) as error:
-            raise UpstreamError(
-                f"公式リソースページをデコードできません: {charset}"
-            ) from error
-        final_url = response.geturl()
-    link_rule = resource["archive_link"]
-    if link_parser == "ax":
-        # axが失敗しても別の解析器へ切り替えない。異なる解析結果が一度の
-        # 更新確認へ混在し、失敗原因が隠れることを防ぐため。
-        archive_urls = archive_urls_with_ax(document, link_rule, final_url, policy)
-    else:
-        archive_urls = archive_urls_from_html(
-            document,
-            link_rule["href_contains"],
-            link_rule["href_suffix"],
-            final_url,
-            policy,
-        )
-    if len(archive_urls) != 1:
-        raise UpstreamError(
-            f"Markdown ZIPのリンクを一意に取得できません: {archive_urls!r}"
-        )
-    return archive_urls[0], validator
-
-
-def read_source_validator(url: str, policy: SourcePolicy) -> dict[str, Any]:
-    with open_source_response(url, policy, method="HEAD") as response:
-        return response_validator(response)
-
-
-def download_archive(
-    url: str,
-    destination: Path,
-    policy: SourcePolicy,
-) -> dict[str, Any]:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{destination.name}.", dir=destination.parent
-    )
-    temporary_path = Path(temporary_name)
-    try:
-        with open_source_response(
-            url,
-            policy,
-            require_archive=True,
-            allowed_content_types=policy.archive_content_types,
-        ) as response:
-            validator = response_validator(response)
-            declared_length = response_content_length(response)
-            if declared_length is not None and declared_length > MAX_ARCHIVE_BYTES:
-                raise UpstreamError(
-                    "ZIPの取得サイズが上限を超えています: "
-                    f"{declared_length} > {MAX_ARCHIVE_BYTES}"
-                )
-            with os.fdopen(descriptor, "wb") as output:
-                descriptor = -1
-                total = 0
-                while chunk := response.read(1024 * 1024):
-                    total += len(chunk)
-                    if total > MAX_ARCHIVE_BYTES:
-                        raise UpstreamError(
-                            f"ZIPの取得サイズが上限を超えています: {MAX_ARCHIVE_BYTES}"
-                        )
-                    output.write(chunk)
-                output.flush()
-                os.fsync(output.fileno())
-        if not zipfile.is_zipfile(temporary_path):
-            raise UpstreamError("取得したファイルは有効なZIPではありません")
-        os.replace(temporary_path, destination)
-        return validator
-    finally:
-        if descriptor != -1:
-            os.close(descriptor)
-        if temporary_path.exists():
-            temporary_path.unlink()
 
 
 def extract_archive(archive: Path, destination: Path) -> Path:
@@ -802,22 +390,6 @@ def write_candidate(
     return candidate_id, "candidate_created", difference
 
 
-def source_validators(
-    contract: dict[str, Any],
-    policy: SourcePolicy,
-    resource_validator: dict[str, Any],
-    link_parser: str,
-) -> dict[str, Any]:
-    validators: dict[str, Any] = {
-        "link_parser": link_parser,
-        "resources_page": resource_validator,
-    }
-    for name, source in contract["sources"].items():
-        if name != "resources_page":
-            validators[name] = read_source_validator(source["url"], policy)
-    return validators
-
-
 def mark_failed_attempt(
     state_file: Path, state: dict[str, Any], attempted_at: dt.datetime
 ) -> None:
@@ -847,14 +419,10 @@ def check_upstream(arguments: argparse.Namespace) -> dict[str, Any]:
 
         contract = load_object(arguments.contract_file)
         try:
-            policy = source_policy(contract)
-            link_parser = resolve_link_parser(getattr(arguments, "link_parser", "auto"))
-            archive_url, resource_validator = find_current_archive(
-                contract, policy, link_parser
+            backend = select_fetch_backend(
+                getattr(arguments, "fetch_backend", "auto"), contract
             )
-            validators = source_validators(
-                contract, policy, resource_validator, link_parser
-            )
+            archive_url = backend.find_current_archive(contract)
             active_archive_url = manifest["active_snapshot"]["archive"]["url"]
             active_archive_sha256 = manifest["active_snapshot"]["archive"]["sha256"]
             result: dict[str, Any]
@@ -862,11 +430,16 @@ def check_upstream(arguments: argparse.Namespace) -> dict[str, Any]:
             with tempfile.TemporaryDirectory(prefix="dads-update-") as temporary:
                 temporary_dir = Path(temporary)
                 archive_file = temporary_dir / "candidate.zip"
-                archive_validator = download_archive(archive_url, archive_file, policy)
-                archive_url = archive_validator["url"]
+                download_result = backend.download_archive(archive_url, archive_file)
+                archive_url = download_result["url"]
                 archive_sha256 = sha256_file(archive_file)
-                archive_validator["sha256"] = archive_sha256
-                validators["archive"] = archive_validator
+                source_verification = {
+                    "fetch_backend": backend.name,
+                    "archive": {
+                        **download_result,
+                        "sha256": archive_sha256,
+                    },
+                }
 
                 if (
                     archive_url == active_archive_url
@@ -875,7 +448,7 @@ def check_upstream(arguments: argparse.Namespace) -> dict[str, Any]:
                     result = {
                         "ok": True,
                         "result": "unchanged",
-                        "link_parser": link_parser,
+                        "fetch_backend": backend.name,
                         "archive_url": archive_url,
                         "archive_sha256": archive_sha256,
                     }
@@ -900,7 +473,7 @@ def check_upstream(arguments: argparse.Namespace) -> dict[str, Any]:
                     result = {
                         "ok": True,
                         "result": candidate_result,
-                        "link_parser": link_parser,
+                        "fetch_backend": backend.name,
                         "candidate_id": candidate_id,
                         "archive_url": archive_url,
                         "archive_sha256": archive_sha256,
@@ -919,7 +492,7 @@ def check_upstream(arguments: argparse.Namespace) -> dict[str, Any]:
                         if result["result"].startswith("candidate_")
                         else "unchanged"
                     ),
-                    "source_validators": validators,
+                    "source_verification": source_verification,
                     "active_snapshot_id": manifest["active_snapshot"]["id"],
                 }
             )
@@ -1054,10 +627,10 @@ def build_parser() -> argparse.ArgumentParser:
     check_parser.add_argument("--network-approved", action="store_true")
     check_parser.add_argument("--force", action="store_true")
     check_parser.add_argument(
-        "--link-parser",
+        "--fetch-backend",
         choices=("auto", "ax", "stdlib"),
         default="auto",
-        help="HTMLリンク抽出方式。autoはaxを優先し、見つからなければ標準ライブラリを使う",
+        help="取得バックエンド。autoはaxを優先し、見つからなければ標準ライブラリを使う",
     )
     check_parser.add_argument("--state-file", type=Path, default=state_file)
     check_parser.add_argument(

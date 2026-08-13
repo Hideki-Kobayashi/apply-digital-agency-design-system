@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import io
+import hashlib
 import json
 import os
 import shutil
@@ -10,7 +10,6 @@ import sys
 import tempfile
 import unittest
 import zipfile
-from email.message import Message
 from pathlib import Path
 from unittest import mock
 
@@ -93,7 +92,7 @@ class StatusTests(unittest.TestCase):
     def test_check_without_consent_never_calls_network(self) -> None:
         arguments = argparse.Namespace(network_approved=False)
         with (
-            mock.patch.object(manage_upstream, "resolve_link_parser") as network,
+            mock.patch.object(manage_upstream, "select_fetch_backend") as network,
             self.assertRaises(manage_upstream.UpstreamError),
         ):
             manage_upstream.check_upstream(arguments)
@@ -115,7 +114,7 @@ class StatusTests(unittest.TestCase):
         )
         with (
             mock.patch.object(manage_upstream, "utc_now", return_value=self.now),
-            mock.patch.object(manage_upstream, "resolve_link_parser") as network,
+            mock.patch.object(manage_upstream, "select_fetch_backend") as network,
         ):
             result = manage_upstream.check_upstream(arguments)
         self.assertEqual("skipped_fresh", result["result"])
@@ -151,392 +150,152 @@ class DefaultPathTests(unittest.TestCase):
             arguments.contract_file,
         )
 
-    def test_check_uses_automatic_link_parser_selection_by_default(self) -> None:
+    def test_check_uses_automatic_fetch_backend_by_default(self) -> None:
         arguments = manage_upstream.build_parser().parse_args(
             ["check", "--network-approved"]
         )
-        self.assertEqual("auto", arguments.link_parser)
+        self.assertEqual("auto", arguments.fetch_backend)
 
 
-class LinkParserTests(unittest.TestCase):
-    @staticmethod
-    def policy() -> manage_upstream.SourcePolicy:
-        return manage_upstream.source_policy(
-            {
-                "allowed_hosts": ["design.digital.go.jp"],
-                "allowed_path_prefixes": ["/dads/"],
-                "archive_path_pattern": (r"^/dads/dads-markdown-[0-9]{8}\.zip$"),
-                "archive_content_types": ["application/zip"],
-            }
+class CheckBackendFlowTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.state_file = self.root / "state.json"
+        self.contract_file = self.root / "contract.json"
+        self.manifest_file = self.root / "manifest.json"
+        self.candidate_root = self.root / "candidates"
+        self.archive_url = (
+            "https://design.digital.go.jp/dads/dads-markdown-20260805.zip"
         )
-
-    def test_auto_prefers_ax_when_available(self) -> None:
-        with mock.patch.object(manage_upstream.shutil, "which", return_value="/bin/ax"):
-            self.assertEqual("ax", manage_upstream.resolve_link_parser("auto"))
-
-    def test_auto_falls_back_to_standard_library(self) -> None:
-        with mock.patch.object(manage_upstream.shutil, "which", return_value=None):
-            self.assertEqual("stdlib", manage_upstream.resolve_link_parser("auto"))
-
-    def test_explicit_ax_requires_the_command(self) -> None:
-        with (
-            mock.patch.object(manage_upstream.shutil, "which", return_value=None),
-            self.assertRaises(manage_upstream.UpstreamError),
-        ):
-            manage_upstream.resolve_link_parser("ax")
-
-    def test_standard_library_extracts_the_unique_official_archive(self) -> None:
-        urls = manage_upstream.archive_urls_from_html(
-            """
-            <a href="/dads/other.zip">other</a>
-            <a href="/dads/dads-markdown-20260805.zip">Markdown</a>
-            """,
-            "dads-markdown-",
-            ".zip",
-            "https://design.digital.go.jp/dads/resources/",
-            self.policy(),
-        )
-        self.assertEqual(
-            ["https://design.digital.go.jp/dads/dads-markdown-20260805.zip"],
-            urls,
-        )
-
-    def test_standard_library_rejects_matching_links_to_other_hosts(self) -> None:
-        with self.assertRaises(manage_upstream.UpstreamError):
-            manage_upstream.archive_urls_from_html(
-                '<a href="https://example.com/dads-markdown-20260805.zip">ZIP</a>',
-                "dads-markdown-",
-                ".zip",
-                "https://design.digital.go.jp/dads/resources/",
-                self.policy(),
-            )
-
-    def test_ax_link_parser_deduplicates_identical_links(self) -> None:
-        rows = [
-            {"href": "/dads/dads-markdown-20260805.zip"},
-            {"href": "/dads/dads-markdown-20260805.zip"},
-        ]
-        with mock.patch.object(manage_upstream, "run_ax_json", return_value=rows):
-            urls = manage_upstream.archive_urls_with_ax(
-                "<html></html>",
-                {"href_contains": "dads-markdown-", "href_suffix": ".zip"},
-                "https://design.digital.go.jp/dads/resources/",
-                self.policy(),
-            )
-        self.assertEqual(
-            ["https://design.digital.go.jp/dads/dads-markdown-20260805.zip"],
-            urls,
-        )
-
-    def test_ax_receives_utf8_and_extracts_all_links(self) -> None:
-        completed = mock.Mock(returncode=0, stdout="[]", stderr="")
-        with (
-            mock.patch.object(
-                manage_upstream.shutil, "which", return_value="/usr/local/bin/ax"
-            ),
-            mock.patch.object(
-                manage_upstream.subprocess, "run", return_value=completed
-            ) as run,
-        ):
-            manage_upstream.run_ax_json(["-", "a", "--all"], "案内🙂")
-
-        run.assert_called_once_with(
-            ["/usr/local/bin/ax", "-", "a", "--all"],
-            check=False,
-            capture_output=True,
-            input="案内🙂",
-            text=True,
-            encoding="utf-8",
-            errors="strict",
-            timeout=manage_upstream.NETWORK_TIMEOUT_SECONDS,
-        )
-
-    def test_ax_archive_parser_requests_every_matching_link(self) -> None:
-        with mock.patch.object(manage_upstream, "run_ax_json", return_value=[]) as run:
-            manage_upstream.archive_urls_with_ax(
-                "<html></html>",
-                {"href_contains": "dads-markdown-", "href_suffix": ".zip"},
-                "https://design.digital.go.jp/dads/resources/",
-                self.policy(),
-            )
-
-        self.assertIn("--all", run.call_args.args[0])
-
-    def test_archive_discovery_uses_standard_library_parser(self) -> None:
-        headers = Message()
-        headers["Content-Type"] = "text/html; charset=utf-8"
-        response = mock.Mock()
-        response.headers = headers
-        response.geturl.return_value = "https://design.digital.go.jp/dads/resources/"
-        response.read.side_effect = [
-            b'<a href="/dads/dads-markdown-20260805.zip">Markdown</a>',
-            b"",
-        ]
-        context = mock.MagicMock()
-        context.__enter__.return_value = response
-        contract = {
-            "sources": {
-                "resources_page": {
-                    "url": "https://design.digital.go.jp/dads/resources/",
-                    "archive_link": {
-                        "href_contains": "dads-markdown-",
-                        "href_suffix": ".zip",
-                    },
+        self.payload = b"unchanged archive"
+        self.contract_file.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "contract_version": 3,
+                    "freshness_days": 30,
                 }
-            }
-        }
-
-        with mock.patch.object(
-            manage_upstream, "open_source_response", return_value=context
-        ):
-            archive_url, validator = manage_upstream.find_current_archive(
-                contract,
-                self.policy(),
-                "stdlib",
-            )
-
-        self.assertEqual(
-            "https://design.digital.go.jp/dads/dads-markdown-20260805.zip",
-            archive_url,
+            ),
+            encoding="utf-8",
         )
-        self.assertEqual(
-            "https://design.digital.go.jp/dads/resources/", validator["url"]
+        self.manifest_file.write_text(
+            json.dumps(
+                {
+                    "active_snapshot": {
+                        "id": "current",
+                        "archive": {
+                            "url": self.archive_url,
+                            "sha256": hashlib.sha256(self.payload).hexdigest(),
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
         )
+        self.arguments = argparse.Namespace(
+            network_approved=True,
+            force=False,
+            fetch_backend="auto",
+            state_file=self.state_file,
+            contract_file=self.contract_file,
+            manifest_file=self.manifest_file,
+            candidate_root=self.candidate_root,
+        )
+        self.now = dt.datetime(2026, 8, 13, 0, 0, tzinfo=dt.timezone.utc)
 
-    def test_ax_failure_does_not_retry_with_standard_library(self) -> None:
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_one_selected_backend_handles_discovery_and_download(self) -> None:
+        calls: list[str] = []
+        payload = self.payload
+        archive_url = self.archive_url
+
+        class RecordingBackend:
+            name = "ax"
+
+            def find_current_archive(self, _contract: dict) -> str:
+                calls.append("find")
+                return archive_url
+
+            def download_archive(self, _url: str, destination: Path) -> dict:
+                calls.append("download")
+                destination.write_bytes(payload)
+                return {"url": archive_url, "bytes": len(payload)}
+
         with (
             mock.patch.object(
                 manage_upstream,
-                "run_ax_json",
-                side_effect=manage_upstream.UpstreamError("ax failed"),
-            ),
+                "select_fetch_backend",
+                return_value=RecordingBackend(),
+            ) as select,
             mock.patch.object(
-                manage_upstream, "archive_urls_from_html"
-            ) as standard_library,
-            self.assertRaisesRegex(manage_upstream.UpstreamError, "ax failed"),
+                manage_upstream,
+                "utc_now",
+                side_effect=(self.now, self.now + dt.timedelta(seconds=1)),
+            ),
         ):
-            manage_upstream.archive_urls_with_ax(
-                '<a href="/dads/dads-markdown-20260805.zip">Markdown</a>',
-                {"href_contains": "dads-markdown-", "href_suffix": ".zip"},
-                "https://design.digital.go.jp/dads/resources/",
-                self.policy(),
-            )
-        standard_library.assert_not_called()
+            result = manage_upstream.check_upstream(self.arguments)
 
-
-class SourceTransportTests(unittest.TestCase):
-    @staticmethod
-    def policy() -> manage_upstream.SourcePolicy:
-        return LinkParserTests.policy()
-
-    @staticmethod
-    def zip_bytes() -> bytes:
-        output = io.BytesIO()
-        with zipfile.ZipFile(output, "w") as bundle:
-            bundle.writestr("README.md", "fixture")
-            bundle.writestr("index.md", "# fixture")
-        return output.getvalue()
-
-    @staticmethod
-    def response(payload: bytes, declared_length: int | None = None) -> mock.Mock:
-        headers = Message()
-        headers["Content-Type"] = "application/zip"
-        if declared_length is not None:
-            headers["Content-Length"] = str(declared_length)
-        response = mock.Mock()
-        response.headers = headers
-        response.geturl.return_value = (
-            "https://design.digital.go.jp/dads/dads-markdown-20260805.zip"
+        self.assertEqual(["find", "download"], calls)
+        select.assert_called_once_with("auto", mock.ANY)
+        self.assertEqual("unchanged", result["result"])
+        self.assertEqual("ax", result["fetch_backend"])
+        state = json.loads(self.state_file.read_text(encoding="utf-8"))
+        self.assertEqual(
+            {
+                "fetch_backend": "ax",
+                "archive": {
+                    "url": self.archive_url,
+                    "bytes": len(self.payload),
+                    "sha256": hashlib.sha256(self.payload).hexdigest(),
+                },
+            },
+            state["source_verification"],
         )
-        response.read.side_effect = [payload, b""]
-        return response
+        self.assertNotIn("source_validators", state)
 
-    def test_url_policy_rejects_non_archive_paths(self) -> None:
-        with self.assertRaises(manage_upstream.UpstreamError):
-            manage_upstream.ensure_allowed_url(
-                "https://design.digital.go.jp/dads/other.zip",
-                self.policy(),
-                require_archive=True,
-            )
-
-    def test_url_policy_rejects_query_and_fragment(self) -> None:
-        for suffix in ("?download=1", "#archive"):
-            with (
-                self.subTest(suffix=suffix),
-                self.assertRaises(manage_upstream.UpstreamError),
-            ):
-                manage_upstream.ensure_allowed_url(
-                    "https://design.digital.go.jp/"
-                    f"dads/dads-markdown-20260805.zip{suffix}",
-                    self.policy(),
-                    require_archive=True,
-                )
-
-    def test_redirect_rejects_http_and_other_hosts_before_following(self) -> None:
-        handler = manage_upstream.AllowedRedirectHandler(self.policy(), False)
-        request = manage_upstream.Request(
-            "https://design.digital.go.jp/dads/resources/"
+    def test_failed_backend_does_not_replace_the_last_success_time(self) -> None:
+        last_success = self.now - dt.timedelta(days=31)
+        self.state_file.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "checked_contract_version": 3,
+                    "last_successful_check_at": manage_upstream.format_time(
+                        last_success
+                    ),
+                    "active_snapshot_id": "current",
+                    "pending_candidate_ids": [],
+                }
+            ),
+            encoding="utf-8",
         )
-        for redirect_url in (
-            "http://design.digital.go.jp/dads/resources/",
-            "https://example.com/dads/resources/",
-        ):
-            with (
-                self.subTest(url=redirect_url),
-                self.assertRaises(manage_upstream.UpstreamError),
-            ):
-                handler.redirect_request(
-                    request,
-                    None,
-                    302,
-                    "Found",
-                    Message(),
-                    redirect_url,
-                )
-
-    def test_head_method_is_preserved_after_allowed_redirect(self) -> None:
-        handler = manage_upstream.AllowedRedirectHandler(self.policy(), False)
-        request = manage_upstream.Request(
-            "https://design.digital.go.jp/dads/feed.xml",
-            method="HEAD",
+        backend = mock.Mock(name="selected_backend")
+        backend.find_current_archive.side_effect = manage_upstream.UpstreamError(
+            "selected backend failed"
         )
-        redirected = handler.redirect_request(
-            request,
-            None,
-            302,
-            "Found",
-            Message(),
-            "https://design.digital.go.jp/dads/feed-latest.xml",
-        )
-        self.assertIsNotNone(redirected)
-        self.assertEqual("HEAD", redirected.get_method())
-
-    def test_transport_uses_tls12_and_disables_environment_proxy(self) -> None:
-        headers = Message()
-        headers["Content-Type"] = "text/html"
-        response = mock.Mock(status=200)
-        response.headers = headers
-        response.geturl.return_value = "https://design.digital.go.jp/dads/resources/"
-        opener = mock.Mock()
-        opener.open.return_value = response
-        tls_context = mock.Mock()
-
         with (
             mock.patch.object(
-                manage_upstream.ssl,
-                "create_default_context",
-                return_value=tls_context,
-            ),
-            mock.patch.object(
-                manage_upstream, "build_opener", return_value=opener
-            ) as build_opener,
-            manage_upstream.open_source_response(
-                "https://design.digital.go.jp/dads/resources/",
-                self.policy(),
-                allowed_content_types=frozenset({"text/html"}),
+                manage_upstream,
+                "select_fetch_backend",
+                return_value=backend,
+            ) as select,
+            mock.patch.object(manage_upstream, "utc_now", return_value=self.now),
+            self.assertRaisesRegex(
+                manage_upstream.UpstreamError, "selected backend failed"
             ),
         ):
-            pass
+            manage_upstream.check_upstream(self.arguments)
 
+        select.assert_called_once()
+        state = json.loads(self.state_file.read_text(encoding="utf-8"))
         self.assertEqual(
-            manage_upstream.ssl.TLSVersion.TLSv1_2,
-            tls_context.minimum_version,
+            manage_upstream.format_time(last_success),
+            state["last_successful_check_at"],
         )
-        handlers = build_opener.call_args.args
-        proxy_handler = next(
-            handler
-            for handler in handlers
-            if isinstance(handler, manage_upstream.ProxyHandler)
-        )
-        https_handler = next(
-            handler
-            for handler in handlers
-            if isinstance(handler, manage_upstream.HTTPSHandler)
-        )
-        self.assertEqual({}, proxy_handler.proxies)
-        self.assertIs(tls_context, https_handler._context)
-        response.close.assert_called_once()
-
-    def test_download_is_atomic_and_records_get_validator(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            destination = Path(temporary) / "archive.zip"
-            payload = self.zip_bytes()
-            response = self.response(payload, len(payload))
-            context = mock.MagicMock()
-            context.__enter__.return_value = response
-            with mock.patch.object(
-                manage_upstream, "open_source_response", return_value=context
-            ):
-                validator = manage_upstream.download_archive(
-                    "https://design.digital.go.jp/dads/dads-markdown-20260805.zip",
-                    destination,
-                    self.policy(),
-                )
-            self.assertEqual(payload, destination.read_bytes())
-            self.assertEqual("application/zip", validator["content_type"])
-
-    def test_download_rejects_oversized_response_before_writing(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            destination = Path(temporary) / "archive.zip"
-            response = self.response(b"", manage_upstream.MAX_ARCHIVE_BYTES + 1)
-            context = mock.MagicMock()
-            context.__enter__.return_value = response
-            with (
-                mock.patch.object(
-                    manage_upstream, "open_source_response", return_value=context
-                ),
-                self.assertRaises(manage_upstream.UpstreamError),
-            ):
-                manage_upstream.download_archive(
-                    "https://design.digital.go.jp/dads/dads-markdown-20260805.zip",
-                    destination,
-                    self.policy(),
-                )
-            self.assertFalse(destination.exists())
-
-    def test_download_rejects_stream_over_limit_without_content_length(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            destination = root / "archive.zip"
-            destination.write_bytes(b"existing")
-            response = self.response(b"")
-            response.read.side_effect = [b"1234", b"56", b""]
-            context = mock.MagicMock()
-            context.__enter__.return_value = response
-            with (
-                mock.patch.object(
-                    manage_upstream, "open_source_response", return_value=context
-                ),
-                mock.patch.object(manage_upstream, "MAX_ARCHIVE_BYTES", 5),
-                self.assertRaises(manage_upstream.UpstreamError),
-            ):
-                manage_upstream.download_archive(
-                    "https://design.digital.go.jp/dads/dads-markdown-20260805.zip",
-                    destination,
-                    self.policy(),
-                )
-            self.assertEqual(b"existing", destination.read_bytes())
-            self.assertEqual([destination], list(root.iterdir()))
-
-    def test_download_rejects_non_zip_without_replacing_destination(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            destination = Path(temporary) / "archive.zip"
-            destination.write_bytes(b"existing")
-            response = self.response(b"not a zip")
-            context = mock.MagicMock()
-            context.__enter__.return_value = response
-            with (
-                mock.patch.object(
-                    manage_upstream, "open_source_response", return_value=context
-                ),
-                self.assertRaises(manage_upstream.UpstreamError),
-            ):
-                manage_upstream.download_archive(
-                    "https://design.digital.go.jp/dads/dads-markdown-20260805.zip",
-                    destination,
-                    self.policy(),
-                )
-            self.assertEqual(b"existing", destination.read_bytes())
+        self.assertEqual("failed", state["last_check_result"])
 
 
 class ArchiveExtractionTests(unittest.TestCase):
