@@ -404,17 +404,14 @@ class ManualImportTests(unittest.TestCase):
 
         active_snapshot = self.references / "upstream/current"
         active_snapshot.mkdir(parents=True)
-        (active_snapshot / "README.md").write_text(
-            "active fixture\n",
-            encoding="utf-8",
-        )
-        (active_snapshot / "index.md").write_text(
-            "# DADS Markdown v2.7.0\nactive\n",
-            encoding="utf-8",
-        )
+        # Keep fixture bytes identical to ZipFile.writestr on every OS.
+        # Text-mode writes would turn LF into CRLF on Windows and change the
+        # content hash even though the Markdown text is otherwise identical.
+        (active_snapshot / "README.md").write_bytes(b"active fixture\n")
+        (active_snapshot / "index.md").write_bytes(b"# DADS Markdown v2.7.0\nactive\n")
         official_file = active_snapshot / "components/example/index.md"
         official_file.parent.mkdir(parents=True)
-        official_file.write_text(self.official_document(), encoding="utf-8")
+        official_file.write_bytes(self.official_document().encode("utf-8"))
         active_index = manage_upstream.scan_snapshot(active_snapshot)
         (active_snapshot / "source-index.json").write_text(
             json.dumps(active_index),
