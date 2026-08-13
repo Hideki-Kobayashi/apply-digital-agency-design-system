@@ -25,5 +25,5 @@ jobs:
       - name: Run tests
         run: >-
           python -m unittest discover
-          -s skills/apply-digital-agency-design-system/scripts/tests
+          -s tests
           -v

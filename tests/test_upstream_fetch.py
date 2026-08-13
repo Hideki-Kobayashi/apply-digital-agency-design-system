@@ -11,7 +11,9 @@ from pathlib import Path
 from unittest import mock
 from urllib.request import HTTPSHandler, ProxyHandler, Request
 
-SCRIPTS_DIR = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+SKILL_ROOT = REPOSITORY_ROOT / "skills/apply-digital-agency-design-system"
+SCRIPTS_DIR = SKILL_ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import upstream_fetch

@@ -6,198 +6,83 @@
 
 ## できること
 
-- 新規ページの基本デザインを、カラー、タイポグラフィ、レイアウト、余白などの8分類から決める。
-- 既存UIの値を、維持、移行、意図的な逸脱に分けて改修する。
-- 個別コンポーネントに必要な公式資料だけを選び、実装またはレビューする。
+- 新規ページに必要な基本デザインを整理する。
+- 既存UIを、維持、移行、意図的な逸脱に分けて改修する。
+- 個別コンポーネントに必要な公式資料を選び、実装またはレビューする。
 - 公式の選択肢、既定値、例、原則、要件、固定値を区別する。
-- 承認済みの公式Markdownスナップショットを検索し、根拠のURLと参照版を報告する。
-- 前回の成功確認から30日以上経過したとき、通常作業の完了後に公式更新の確認を提案する。
+- デジタル庁が配布するMarkdownの更新を確認する。
 
 通常作業では外部通信を行いません。
 
-更新確認への同意と、見つかった更新候補を有効化する承認も分けています。
-
-## 収録版
-
-| 項目 | 値 |
-|---|---|
-| スナップショットID | `2026-08-05` |
-| デジタル庁デザインシステム版 | `v2.17.0` |
-| Markdown公開日 | 2026年8月5日 |
-| 公式文書 | 123件 |
-| Markdown総数 | 125件 |
-| 公式ZIPのSHA-256 | `cde548789a744f53d87997cbefec1ec7feacf8fb3b023bfe9ea07a713de2c8d8` |
-
-版とハッシュの正本は[`source-manifest.json`](skills/apply-digital-agency-design-system/references/source-manifest.json)です。
-
 ## 必要なもの
 
-- ChatGPTデスクトップアプリのCodex、Codex CLI、またはCodex IDE拡張。
-- Python 3.10以上。
+- Codex
+- Python 3.10以上
 
-Python部分はmacOS、Linux、Windowsに対応しています。
+macOS、Linux、Windowsに対応しています。
 
-公式更新の確認にも、追加のCLIは必要ありません。
+公式資料の更新確認では、[`ax`](https://github.com/yusukebe/ax)が見つかれば自動で利用します。`ax`は推奨ですが必須ではありません。
 
-## 任意の推奨ツール
+## インストールと更新
 
-公式更新の確認では、[`ax`](https://github.com/yusukebe/ax)が見つかる場合、公式ページの取得、最新ZIPのリンク抽出、ZIPの保存を自動で任せます。
-
-`ax`はHTMLから必要なリンクを簡潔かつ明示的に抽出できるため、このリポジトリでは推奨しています。
-
-ただし、インストールは必須ではありません。
-
-`ax`が見つからない場合は、Python標準ライブラリが更新確認全体を代行します。
-
-`ax`経路では、`ax`がHTTPリダイレクトを自動追従します。
-リダイレクト後の最終URLは公式ホストか検証しますが、途中の転送先は通信前に検証できません。
-転送先も通信前に制限したい場合は、`--fetch-backend stdlib`を使います。
-
-## インストール
-
-Codexで`$skill-installer`を使い、次のURLからインストールする方法を推奨します。
+Codexへ次のように依頼してください。
 
 ```text
 $skill-installerを使って、https://github.com/Hideki-Kobayashi/apply-digital-agency-design-system/tree/main/skills/apply-digital-agency-design-system からSkillをインストールしてください。
 ```
 
-同名のSkillがすでにある場合、Skill Installerは既存フォルダを上書きしません。
+インストール済みのSkill本体を確認または更新する場合は、このSkillへ明示的に依頼します。
 
-既存版を残すか削除するかを決めてから、もう一度インストールしてください。
+```text
+$apply-digital-agency-design-systemを使って、Skill本体の最新版を確認してください。
+```
 
-手動で導入する場合は、このリポジトリの`skills/apply-digital-agency-design-system`ディレクトリを、Codexが読み込むユーザー用Skillディレクトリへコピーします。
+```text
+$apply-digital-agency-design-systemを使って、Skill本体を最新版へ更新してください。
+```
 
-[Codexの現行ドキュメント](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills)で案内されているユーザー用ディレクトリは`$HOME/.agents/skills`です。
+確認だけの依頼ではインストール済みファイルを変更しません。更新時は差分と検証結果を示し、利用者の承認後に置き換えます。
 
 ## 使い方
-
-新規ページの例です。
 
 ```text
 $apply-digital-agency-design-systemを使って、この申請フォームを新規作成してください。
 ```
 
-既存UIの改修例です。
-
 ```text
 $apply-digital-agency-design-systemを使って、既存のボタンと入力欄をデジタル庁デザインシステムに沿って改修してください。
 ```
-
-レビュー例です。
 
 ```text
 $apply-digital-agency-design-systemを使って、この画面をレビューしてください。ファイルは変更しないでください。
 ```
 
-明示的に最新版を確認する例です。
+## 更新確認
+
+### 公式資料
+
+前回の成功確認から30日以上経過すると、依頼された作業を先に完了してから確認を提案します。利用者が同意するまで公式サイトへ接続しません。
+
+変更が見つかった場合は候補として保存し、別の承認があるまで利用中の公式資料を切り替えません。ZIPを自動取得できない場合は、特定済みの公式URLから手動で保存する方法を案内することがあります。
 
 ```text
-$apply-digital-agency-design-systemを使って、デジタル庁デザインシステムの最新版を確認してください。
+$apply-digital-agency-design-systemを使って、公式資料の最新版を確認してください。
 ```
 
-## 更新確認の動作
+### Skill本体
 
-Skillは起動時に利用者別のローカル状態だけを読みます。
+Skill本体は自動確認しません。「Skill本体の最新版を確認して」または「Skill本体を更新して」という明示的な依頼があった場合だけ、GitHubの公開版と比較します。
 
-前回の成功確認から30日以上経過していても、依頼された作業を先に完了し、最後に更新確認を提案するだけです。
-
-利用者が同意するまで公式サイトへ接続しません。
-
-変更が見つかった場合は候補として保存し、候補IDを指定した別の承認があるまで有効版を切り替えません。
-
-取得バックエンドは既定で`auto`です。
-
-- `ax`が見つかる場合は、外部通信とHTML解析を`ax`へ任せる。
-- 見つからない場合は、Python標準ライブラリで外部通信とHTML解析を行う。
-- 更新確認の開始時に一つを選び、処理の途中で別のバックエンドへ切り替えない。
-
-取得後のURL・容量・ZIP形式の確認、ハッシュ計算、差分作成、状態保存は、どちらの場合もPythonで行います。
-
-動作確認などで取得バックエンドを固定する場合は、更新確認コマンドへ`--fetch-backend ax`または`--fetch-backend stdlib`を指定できます。
-
-### ZIPを手動で取得する場合
-
-自動取得が最終的に失敗し、公式ZIPのURLまで特定できている場合だけ、手動取得を最後の手段として案内します。
-
-表示された公式ZIPのURLをブラウザで開き、任意のフォルダへ保存してください。
-保存後、ファイル名を含む絶対パスをCodexへ伝えます。
-
-Codexは次のコマンドでZIPを取り込みます。
-`<python>`はPython 3.10以上の実行コマンド、`<skill-root>`はSkillディレクトリの絶対パスへ置き換えます。
-
-```sh
-<python> <skill-root>/scripts/manage_upstream.py import-archive \
-  --archive-file '<ZIPの絶対パス>'
-```
-
-この処理はネットワークへ接続しません。
-更新確認で記録した公式URLへZIPを結び付け、容量、ZIP形式、内部パス、Markdown集合、ハッシュを検証してから更新候補として保存します。
-元のZIPは変更も削除もしません。
-ローカルZIPの取り込みは外部確認の成功とは扱わないため、前回成功日と30日判定は変わりません。
-更新候補は自動で有効化せず、別途、候補IDを指定した採用承認を必要とします。
-
-公式ZIPのURLを特定する前に失敗した場合、URLやファイル名から取得先を推測しません。
-また、URLの特定から30日を超えた場合や更新契約が変わった場合は取り込みを拒否し、新しい更新確認を必要とします。
-
-実行状態と候補の既定保存先は次のとおりです。
-
-| OS | 保存先 |
-|---|---|
-| macOS | `~/Library/Application Support/apply-digital-agency-design-system/` |
-| Linux | `${XDG_STATE_HOME:-~/.local/state}/apply-digital-agency-design-system/` |
-| Windows | `%LOCALAPPDATA%\apply-digital-agency-design-system\` |
-
-環境変数`DADS_SKILL_STATE_DIR`を設定すると、保存先を変更できます。
-
-## リポジトリ構成
-
-```text
-skills/apply-digital-agency-design-system/
-├── SKILL.md
-├── agents/openai.yaml
-├── references/
-│   ├── foundation-map.md
-│   ├── source-manifest.json
-│   ├── task-index.md
-│   ├── update-contract.json
-│   └── upstream/2026-08-05/
-└── scripts/
-    ├── build_index.py
-    ├── manage_upstream.py
-    ├── search_guidance.py
-    ├── upstream_fetch.py
-    ├── verify_snapshot.py
-    └── tests/
-```
-
-## テスト
-
-リポジトリルートで次を実行します。
-
-```sh
-python3 -m unittest discover \
-  -s skills/apply-digital-agency-design-system/scripts/tests \
-  -v
-```
-
-テストには、30日判定、同意前の外部通信禁止、取得バックエンドの自動選択、手動取得したZIPのローカル取込、URL・TLS・容量とZIPの安全確認、更新候補と昇格の分離、公式スナップショットのハッシュ検証、参照索引の整合性が含まれます。
-
-GitHub ActionsではmacOS、Linux、Windowsで同じテストを実行します。
+公式資料の更新確認への同意を、Skill本体の更新許可として扱いません。
 
 ## ライセンスと出典
 
-このリポジトリには、適用条件の異なるファイルが含まれます。
-
-独自に作成したコードと文書にはMIT Licenseを適用し、デジタル庁由来の公式Markdownと派生資料にはデジタル庁の利用条件を適用します。
-
-適用範囲は[`LICENSE`](LICENSE)と[`NOTICE.md`](NOTICE.md)を確認してください。
+独自に作成したコードと文書にはMIT Licenseを適用し、デジタル庁由来の公式Markdownと派生資料にはデジタル庁の利用条件を適用します。詳細は[`LICENSE`](LICENSE)と[`NOTICE.md`](NOTICE.md)を確認してください。
 
 出典：デジタル庁デザインシステムウェブサイト https://design.digital.go.jp/dads/
 
 デジタル庁デザインシステムウェブサイト https://design.digital.go.jp/dads/ をもとにHideki-KobayashiがCodex Skill向けに加工して作成。
 
-## 問題報告と更新
+## 問題報告
 
-誤った参照、公式資料との差異、更新確認の不具合はGitHub Issuesで報告してください。
-
-公式資料の更新は、候補の差分と検証結果を確認してからPull Requestとして反映します。
+誤った参照、公式資料との差異、更新確認の不具合は[GitHub Issues](https://github.com/Hideki-Kobayashi/apply-digital-agency-design-system/issues)で報告してください。

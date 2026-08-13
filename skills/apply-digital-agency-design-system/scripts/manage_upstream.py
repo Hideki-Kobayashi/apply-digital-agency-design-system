@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import datetime as dt
 import json
 import os
@@ -14,11 +13,11 @@ import sys
 import tempfile
 import unicodedata
 import zipfile
-from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from build_index import SnapshotError, atomic_write_json, scan_snapshot, sha256_file
+from skill_lock import exclusive_file_lock
 from upstream_fetch import (
     MAX_ARCHIVE_BYTES,
     UpstreamError,
@@ -27,11 +26,6 @@ from upstream_fetch import (
     select_fetch_backend,
 )
 from verify_snapshot import verify_snapshot
-
-if os.name == "nt":
-    import msvcrt
-else:
-    import fcntl
 
 UTC = dt.timezone.utc
 RFC3339_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -236,30 +230,20 @@ def status_result(
     }
 
 
-@contextlib.contextmanager
-def exclusive_lock(state_file: Path) -> Iterator[None]:
-    state_file.parent.mkdir(parents=True, exist_ok=True)
+def exclusive_lock(state_file: Path):
     lock_file = state_file.with_suffix(f"{state_file.suffix}.lock")
-    with lock_file.open("a+b") as lock:
-        if os.name == "nt":
-            # 空ファイルの範囲ロックは行わない。Windowsで1バイトのロック対象を
-            # 常に確保し、同時確認による状態と候補の二重更新を防ぐため。
-            lock.seek(0, os.SEEK_END)
-            if lock.tell() == 0:
-                lock.write(b"0")
-                lock.flush()
-            lock.seek(0)
-            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
-        else:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            if os.name == "nt":
-                lock.seek(0)
-                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+    return exclusive_file_lock(lock_file)
+
+
+def skill_update_lock_file(arguments: argparse.Namespace) -> Path:
+    configured = getattr(arguments, "skill_lock_file", None)
+    if configured is not None:
+        return configured
+    # Direct function callers may provide a standalone test or alternate manifest.
+    # Keep that lock beside their writable state instead of guessing a Skill root.
+    return arguments.state_file.with_suffix(
+        f"{arguments.state_file.suffix}.skill-update.lock"
+    )
 
 
 def extract_archive(archive: Path, destination: Path) -> Path:
@@ -751,7 +735,10 @@ def check_upstream(arguments: argparse.Namespace) -> dict[str, Any]:
         raise UpstreamError("外部確認には--network-approvedが必要です")
 
     attempted_at = utc_now()
-    with exclusive_lock(arguments.state_file):
+    with (
+        exclusive_file_lock(skill_update_lock_file(arguments)),
+        exclusive_lock(arguments.state_file),
+    ):
         manifest = load_object(arguments.manifest_file)
         manifest["_manifest_dir"] = arguments.manifest_file.parent
         state = load_state_or_default(arguments.state_file, manifest)
@@ -868,7 +855,10 @@ def import_archive(arguments: argparse.Namespace) -> dict[str, Any]:
     """Import a manually downloaded ZIP without performing network access."""
 
     attempted_at = utc_now()
-    with exclusive_lock(arguments.state_file):
+    with (
+        exclusive_file_lock(skill_update_lock_file(arguments)),
+        exclusive_lock(arguments.state_file),
+    ):
         manifest = load_object(arguments.manifest_file)
         manifest["_manifest_dir"] = arguments.manifest_file.parent
         state = load_state_or_default(arguments.state_file, manifest)
@@ -956,7 +946,10 @@ def promote_candidate(arguments: argparse.Namespace) -> dict[str, Any]:
     if not CANDIDATE_ID_PATTERN.fullmatch(arguments.candidate_id):
         raise UpstreamError(f"候補IDが不正です: {arguments.candidate_id}")
 
-    with exclusive_lock(arguments.state_file):
+    with (
+        exclusive_file_lock(skill_update_lock_file(arguments)),
+        exclusive_lock(arguments.state_file),
+    ):
         manifest = load_object(arguments.manifest_file)
         contract = load_object(arguments.contract_file)
         state = load_state_or_default(arguments.state_file, manifest)
@@ -1108,6 +1101,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     check_parser.add_argument("--state-file", type=Path, default=state_file)
     check_parser.add_argument(
+        "--skill-lock-file",
+        type=Path,
+        default=SKILL_ROOT.parent / f".{SKILL_ROOT.name}.update.lock",
+        help=argparse.SUPPRESS,
+    )
+    check_parser.add_argument(
         "--contract-file", type=Path, default=references / "update-contract.json"
     )
     check_parser.add_argument(
@@ -1124,6 +1123,12 @@ def build_parser() -> argparse.ArgumentParser:
     import_parser.add_argument("--archive-file", type=Path, required=True)
     import_parser.add_argument("--state-file", type=Path, default=state_file)
     import_parser.add_argument(
+        "--skill-lock-file",
+        type=Path,
+        default=SKILL_ROOT.parent / f".{SKILL_ROOT.name}.update.lock",
+        help=argparse.SUPPRESS,
+    )
+    import_parser.add_argument(
         "--contract-file", type=Path, default=references / "update-contract.json"
     )
     import_parser.add_argument(
@@ -1137,6 +1142,12 @@ def build_parser() -> argparse.ArgumentParser:
     promote_parser.add_argument("--candidate-id", required=True)
     promote_parser.add_argument("--human-approved", action="store_true")
     promote_parser.add_argument("--state-file", type=Path, default=state_file)
+    promote_parser.add_argument(
+        "--skill-lock-file",
+        type=Path,
+        default=SKILL_ROOT.parent / f".{SKILL_ROOT.name}.update.lock",
+        help=argparse.SUPPRESS,
+    )
     promote_parser.add_argument(
         "--contract-file", type=Path, default=references / "update-contract.json"
     )
@@ -1157,6 +1168,7 @@ def main() -> int:
     arguments = parser.parse_args()
     for attribute in (
         "state_file",
+        "skill_lock_file",
         "contract_file",
         "manifest_file",
         "candidate_root",

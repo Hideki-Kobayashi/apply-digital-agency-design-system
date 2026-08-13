@@ -3,7 +3,16 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 .venv/
+.coverage
+coverage.xml
+htmlcov/
+
+/UBIQUITOUS-LANGUAGE.md
+/digital-agency-design-system-skill-design.html
+/*.zip
+/skills/.apply-digital-agency-design-system.update.lock
 
 skills/apply-digital-agency-design-system/references/update-status.json
 skills/apply-digital-agency-design-system/references/update-status.json.lock
