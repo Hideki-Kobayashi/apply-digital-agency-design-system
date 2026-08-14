@@ -178,16 +178,25 @@ class InstallTests(unittest.TestCase):
             with self.assertRaisesRegex(dads.DadsError, "構造が不完全"):
                 dads.read_status(data_root)
 
-    def test_network_install_requires_approval_before_running_ax(self) -> None:
+    def test_network_replace_must_be_explicit_before_running_ax(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            data_root = Path(temporary) / "data"
+            root = Path(temporary)
+            archive = root / "dads-markdown-20260805.zip"
+            data_root = root / "data"
+            write_archive(archive)
+            dads.install_data(data_root, archive_file=archive)
+
             with (
                 mock.patch.object(dads.subprocess, "run") as run,
-                self.assertRaisesRegex(dads.DadsError, "--network-approved"),
+                self.assertRaisesRegex(dads.DadsError, "--replace"),
             ):
-                dads.install_data(data_root, archive_url=ARCHIVE_URL)
+                dads.install_data(data_root, archive_url=LATEST_ARCHIVE_URL)
+
             run.assert_not_called()
-            self.assertFalse(data_root.exists())
+            self.assertEqual(
+                "# Button",
+                (data_root / "current/components/button/index.md").read_text(),
+            )
 
     def test_ax_failure_returns_the_url_and_manual_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -199,13 +208,12 @@ class InstallTests(unittest.TestCase):
                 dads.install_data(
                     data_root,
                     archive_url=ARCHIVE_URL,
-                    network_approved=True,
                 )
             message = str(raised.exception)
             self.assertIn(ARCHIVE_URL, message)
             self.assertIn("--archive-file", message)
 
-    def test_network_install_uses_ax_to_create_the_temporary_zip(self) -> None:
+    def test_initial_network_install_uses_ax_without_approval_flag(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / "source.zip"
@@ -228,7 +236,6 @@ class InstallTests(unittest.TestCase):
                 dads.install_data(
                     data_root,
                     archive_url=ARCHIVE_URL,
-                    network_approved=True,
                 )
 
             self.assertEqual("/usr/bin/ax", calls[0][0])

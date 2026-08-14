@@ -81,7 +81,6 @@ def install_data(
     *,
     archive_url: str | None = None,
     archive_file: Path | None = None,
-    network_approved: bool = False,
     replace: bool = False,
     now: datetime | None = None,
 ) -> dict[str, object]:
@@ -91,8 +90,6 @@ def install_data(
         raise DadsError("--url または --archive-file のどちらか一方を指定してください")
     if archive_url is not None:
         archive_url = validate_archive_url(archive_url)
-        if not network_approved:
-            raise DadsError("URLからの取得には --network-approved が必要です")
     current_dir = data_root / "current"
     _validate_install_destination(data_root, current_dir, replace)
     data_root.mkdir(parents=True, exist_ok=True)
@@ -542,7 +539,6 @@ def _build_parser() -> argparse.ArgumentParser:
     source = install.add_mutually_exclusive_group(required=True)
     source.add_argument("--url")
     source.add_argument("--archive-file", type=Path)
-    install.add_argument("--network-approved", action="store_true")
     install.add_argument("--replace", action="store_true")
     return parser
 
@@ -560,7 +556,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 data_root,
                 archive_url=arguments.url,
                 archive_file=arguments.archive_file,
-                network_approved=arguments.network_approved,
                 replace=arguments.replace,
             )
         print(json.dumps(result, ensure_ascii=False, indent=2))

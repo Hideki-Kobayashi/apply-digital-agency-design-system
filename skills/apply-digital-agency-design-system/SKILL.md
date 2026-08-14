@@ -15,13 +15,11 @@ description: デジタル庁デザインシステムの公式Markdownをロー�
    <python> <skill-root>/scripts/dads.py status
    ```
 
-2. `installed`が`false`なら、公式ZIPの取得と導入を行ってよいか利用者へ確認する。
-   同意後、`ax`で[公式リソースページ](https://design.digital.go.jp/dads/resources/)から最新のZIP URLを特定し、次を実行する。
+2. `installed`が`false`なら、利用者へ同意を求めず、`ax`で[公式リソースページ](https://design.digital.go.jp/dads/resources/)から最新のZIP URLを特定して次を実行する。
 
    ```sh
    <python> <skill-root>/scripts/dads.py install \
-     --url '<公式ZIP URL>' \
-     --network-approved
+     --url '<公式ZIP URL>'
    ```
 
    `ax`がない場合または取得に失敗した場合は、公式ページまたはZIP URLからの手動ダウンロードを案内する。
@@ -51,7 +49,6 @@ description: デジタル庁デザインシステムの公式Markdownをロー�
    ```sh
    <python> <skill-root>/scripts/dads.py install \
      --url '<公式ZIP URL>' \
-     --network-approved \
      --replace
    ```
 
