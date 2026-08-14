@@ -14,9 +14,9 @@ CodexとClaude Codeで利用できます。
 `ax`を導入すると、初回の公式Markdown取得と、前回確認から30日以上経過した利用時の更新確認を自動化できます。
 `ax`がなくても利用できますが、公式ZIPの手動ダウンロードが必要です。
 
-### axの導入
+### ax CLIの導入
 
-`ax`公式のインストールコマンドを実行します。
+macOSまたはLinuxでは、`ax`公式のインストールコマンドを実行します。
 
 ```sh
 curl -fsSL https://ax.yusuke.run/install | sh
@@ -28,7 +28,19 @@ curl -fsSL https://ax.yusuke.run/install | sh
 ax --version
 ```
 
+Windowsでは、[`ax`のReleases](https://github.com/yusukebe/ax/releases)からWindows用の実行ファイルを取得します。
 環境別の詳細は、[`ax`の公式リポジトリ](https://github.com/yusukebe/ax)を確認してください。
+
+### ax Agent Skillの導入
+
+`ax` CLIを導入したら、エージェントへ使い方を伝えるAgent Skillも導入します。
+
+```sh
+npx skills add yusukebe/ax
+```
+
+画面の案内に従って、利用先のCodexまたはClaude Codeを選択してください。
+このコマンドが導入するのはAgent Skillだけです。`ax` CLI本体は別途必要です。
 
 ## インストール
 
