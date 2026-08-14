@@ -1,260 +1,94 @@
 ---
 name: apply-digital-agency-design-system
-description: デジタル庁デザインシステムの公式Markdownを根拠に、WebページとUIコンポーネントを新規作成、既存改修、レビューする非公式Skill。利用者がデジタル庁デザインシステムを指定した場合、対象プロジェクトがUI基準として採用している場合、同システムの適用状況や公式資料の最新版を確認する場合、またはこのSkill本体の最新版確認や更新を依頼した場合に使用する。「行政らしい見た目」や一般的なアクセシビリティ依頼だけでは使用しない。
+description: デジタル庁デザインシステムの公式Markdownをローカルへ保存し、その根拠に沿ってWebページとUIコンポーネントを作成、改修、レビューする非公式Skill。利用者がデジタル庁デザインシステムを指定した場合、または対象プロジェクトが同システムをUI基準として採用している場合に使用する。「行政らしい見た目」や一般的なアクセシビリティ依頼だけでは使用しない。
 ---
 
 # デジタル庁デザインシステムを適用する
 
-承認済みの公式Markdownスナップショットから、依頼に必要な根拠だけを選んで適用する。
-通常作業、公式資料更新、Skill本体更新を分け、更新候補を利用者の承認なしに有効化しない。
-以降の`<skill-root>`は、この`SKILL.md`が置かれているディレクトリの絶対パスへ置き換える。
-以降の`<python>`はPython 3.10以上を実行できるコマンドへ置き換える。
-macOSとLinuxでは通常`python3`、Windowsでは通常`py -3`を使う。
+以下の`<skill-root>`はこの`SKILL.md`があるディレクトリの絶対パス、`<python>`はPython 3.10以上を実行できるコマンドとする。
 
-## 更新対象の区別
+## 実行手順
 
-- **公式資料更新**：デジタル庁が配布するMarkdownを確認し、有効スナップショットの候補を作る。
-- **Skill本体更新**：GitHubで公開されているこのSkillのコード、手順、派生資料と、インストール済みSkillを比較または置換する。
-- 一方への同意または承認を、もう一方へ流用しない。
-- 利用者が「最新版」とだけ述べ、対象が会話から確定しない場合は、公式資料とSkill本体のどちらを指すか利用者へ確認する。
-  回答があるまで外部通信しない。
-- Skill本体の最新版確認または更新だけを依頼された場合は、「Skill本体の更新」へ進み、公式資料の30日判定を実行しない。
+1. Skillを使うたびに、外部通信なしでローカルDADSデータの状態を確認する。
 
-## 情報の境界
+   ```sh
+   <python> <skill-root>/scripts/dads.py status
+   ```
 
-- `references/source-manifest.json`が示す`active_snapshot.path`を、通常作業で使う有効スナップショットとする。
-- 有効スナップショットの`source-index.json`、`references/task-index.md`、`references/foundation-map.md`は派生資料である。
-  公式上の意味は、有効スナップショット内の該当Markdownで確認する。
-- 公式MarkdownはAI参照用の再構成物であり、公式サイトの完全な代替ではない。
-  ローカル資料に必要な記述がない場合は、未確認事項として報告する。
-- このSkillは非公式であり、デジタル庁による提供、承認、提携または推奨を示さない。
-- 既存プロジェクトの現在値は、CSS変数、テーマ設定、共通スタイル、共通コンポーネントから確認する。
-  Skill内へ複製しない。
-- 作成、変更、レビューは操作権限の分類とする。
-  新規作成、既存改修、個別コンポーネントは資料選択の分類とし、混同しない。
+2. `installed`が`false`なら、公式ZIPの取得と導入を行ってよいか利用者へ確認する。
+   同意後、`ax`で[公式リソースページ](https://design.digital.go.jp/dads/resources/)から最新のZIP URLを特定し、次を実行する。
 
-## 起動時の更新期限判定
+   ```sh
+   <python> <skill-root>/scripts/dads.py install \
+     --url '<公式ZIP URL>' \
+     --network-approved
+   ```
 
-最初に次のコマンドを実行する。
-このコマンドはローカルファイルだけを読み、ネットワークへ接続しない。
+   `ax`がない場合または取得に失敗した場合は、公式ページまたはZIP URLからの手動ダウンロードを案内する。
+   ZIPの絶対パスを受け取り、`--archive-file`で導入する。
 
-```sh
-<python> <skill-root>/scripts/manage_upstream.py status
-```
+   ```sh
+   <python> <skill-root>/scripts/dads.py install \
+     --archive-file '<ZIPの絶対パス>'
+   ```
 
-出力の`status`を`status_at_start`として、その依頼中は保持する。
+3. 手順1の結果が`installed: true`で、次のどちらかに該当する場合は、追加の確認を求めず公式更新確認を実行する。
 
-- `fresh`：更新案内を出さず、通常作業を続ける。
-- `due`、`never_checked`、`unknown`：通常作業を止めず、終了時に状態を再確認する。
-- 利用者が最初から「公式資料の最新版を確認して」などと対象を明示した場合：明示依頼を外部確認への同意として扱い、保守手順へ進む。
+   - `check_due: true`
+   - 利用者が最新版の確認または更新を明示的に依頼した
 
-期限は`last_successful_check_at`から30日で判定する。
-提案日時、失敗日時、派生した次回確認日は期限の起点にしない。
+   ```sh
+   <python> <skill-root>/scripts/dads.py check
+   ```
 
-## 通常作業
+   `check`は`ax`で公式リソースページだけを読み、最新のZIP URLと保存済みのURLを比較する。
+   ZIPの取得または`current`の置換は行わない。
+   成功時は差分の有無にかかわらず確認日時を更新する。
 
-1. 依頼を作成、変更、レビューに分類し、許可された操作範囲を確定する。
-2. 対象の技術構成、既存スタイル、ブランド制約、画面構造を確認する。
-3. 次の優先順で資料選択の経路を決める。
-   - 対象が一つのUI部品とその状態に限られる場合は、個別コンポーネントとする。
-   - 共通スタイルが既に存在する場合は、既存改修とする。
-   - それ以外は、新規作成とする。
-4. `references/task-index.md`から対象文書を選ぶ。
-   該当しない場合は、次のコマンドで有効スナップショットを検索する。
+   その起動で実行した`check`が`changed: false`を返したら、利用者へ案内せず通常作業を続ける。
+   `changed: true`を返した場合だけ更新の同意を求め、同意後に次を実行する。
 
-```sh
-<python> <skill-root>/scripts/search_guidance.py \
-  --query '<検索語を空白で区切る>' \
-  --manifest-file <skill-root>/references/source-manifest.json
-```
+   ```sh
+   <python> <skill-root>/scripts/dads.py install \
+     --url '<公式ZIP URL>' \
+     --network-approved \
+     --replace
+   ```
 
-5. 資料選択の経路に応じて`references/foundation-map.md`を使う。
-   - 新規作成：8分類を採用、対象外、保留に分け、値を決める分類の公式Markdownを読む。
-   - 既存改修：既存値を先に調べ、影響する分類だけを読み、維持、移行、意図的な逸脱に分ける。
-   - 個別コンポーネント：既存の共通基準、対象コンポーネント、影響する基本デザインだけを読む。
-     共通値を部品内で決め直さない。
-6. 公式の選択肢、既定値、例、原則、要件、固定値を区別し、採用値と根拠を対応づける。
-7. 既存の技術構成で実装する。
-   公式例を一律の固定値として適用せず、公式要件を見た目の好みとして緩めない。
-8. 対象に応じて、複数画面幅、キーボード操作、フォーカス、状態変化、拡大、リフローを確認する。
-9. レビュー依頼ではファイルを変更せず、根拠付きの指摘だけを返す。
+   `check_due`が`false`なら、`status`の`update_available`が`true`でも再案内しない。
 
-## 通常作業の完了報告
+4. `ax`がない場合または公式更新確認に失敗した場合は、確認日時を更新せず、公式リソースページまたはZIP URLからの手動ダウンロードを案内する。
+   ZIPの絶対パスを受け取り、まず差分だけを確認する。
 
-次を簡潔に報告する。
+   ```sh
+   <python> <skill-root>/scripts/dads.py check \
+     --archive-file '<ZIPの絶対パス>'
+   ```
 
-- 参照版：`source-manifest.json`のスナップショットID、デジタル庁デザインシステム版、Markdown公開日。
-- 確認範囲：読んだ公式文書と、実行した確認。
-- 未確認事項：実機、支援技術、外部の現行ページなど、確認していない範囲。
-- 逸脱：プロジェクト固有の理由で公式例または推奨から変えた内容。
+   `changed: false`なら案内を行わず通常作業を続ける。
+   `changed: true`の場合だけ適用の同意を求め、同意後に同じZIPを導入する。
 
-起動時の状態が`due`、`never_checked`、`unknown`だった場合だけ、報告直前に`status`を再実行する。
-別の処理によって`fresh`になっていなければ、最終報告の末尾で一度だけ更新確認を提案する。
+   ```sh
+   <python> <skill-root>/scripts/dads.py install \
+     --archive-file '<ZIPの絶対パス>' \
+     --replace
+   ```
 
-```text
-前回の公式更新確認から30日以上経過しています。今回の作業は承認済みの現行版で完了しました。更新確認も行いますか？
-```
+5. `status`の`current_dir`を対象に、`rg`で関連するMarkdownを検索する。
 
-`never_checked`または`unknown`では、経過日数を断定せず理由を示す。
-提案だけでは外部通信も状態更新も行わない。
-利用者が断った場合も拒否日時を保存しないため、成功確認まで次回以降も提案する。
+   ```sh
+   rg -n -i '<検索語>' '<current_dir>' -g '*.md'
+   ```
 
-## 公式更新の確認
+6. 画面全体に影響する`foundations`の関連資料を読んでから、対象UIに対応する`components`の資料を読む。
+   必要な場合だけ、その他のガイダンスを読む。
 
-利用者が同意した場合だけ、次を実行する。
-`--network-approved`は利用者の同意を確認した後にだけ付ける。
-30日未満でも明示的に最新版を確認する場合は`--force`を追加する。
+7. 読んだ公式Markdownを根拠に、依頼された作成、改修、レビューを行う。
+   既存UIは、現在のスタイルと制約を先に確認する。
+   公式資料にないトークン、クラス名、仕様を作らない。
+   レビュー依頼ではファイルを変更しない。
 
-取得バックエンドは既定の`auto`に任せる。
-`auto`は`ax`が見つかれば公式ページの取得、リンク抽出、ZIP保存を`ax`へ任せ、見つからなければPython標準ライブラリを使う。
-`ax`は推奨だが任意であり、導入を更新確認の前提にしない。
-`ax`経路はリダイレクト後の最終URLを検証するが、途中の転送先を通信前に検証できない。
-転送先も事前制限する必要がある場合は、`--fetch-backend stdlib`を使う。
-一度選んだバックエンドが失敗しても、別のバックエンドへ暗黙に切り替えない。
-取得後のURL・容量・ZIP形式の確認、ハッシュ計算、差分作成、状態保存はPythonで行う。
-動作確認などで方式を固定する場合だけ、`--fetch-backend ax`または`--fetch-backend stdlib`を追加する。
+## 報告
 
-```sh
-<python> <skill-root>/scripts/manage_upstream.py check \
-  --network-approved
-```
-
-- `unchanged`：確認成功日時を更新し、取得バックエンドと変更なしを報告する。
-- `candidate_created`または`candidate_exists`：取得バックエンド、候補ID、取得元、ハッシュ、追加、変更、削除の件数を報告する。
-- `skipped_fresh`：30日未満のため外部確認を省略したと報告する。
-- 失敗：`last_successful_check_at`と有効スナップショットを変更せず、失敗した取得先と理由を報告する。
-
-外部確認への同意を、候補採用の承認として扱わない。
-候補が見つかっても、公式ソースの確認と候補保存が完了していれば、確認成功日時は更新する。
-
-### ZIPの手動取得
-
-自動取得が最終的に失敗し、`check`が公式ZIPのURLまで特定して手動取得を案内できる場合だけ、この手順を最後の手段として提案する。
-URLを特定する前に失敗した場合は、URLやファイル名から取得先を推測せず、失敗だけを報告する。
-
-次の内容を利用者へ示す。
-
-```text
-ZIPの自動取得に失敗しました。次の公式URLから手動で取得できます。
-<公式ZIP URL>
-
-ZIPは任意のフォルダへ保存してください。保存後、ファイル名まで含む絶対パスを教えてください。
-受け取ったZIPはネットワークへ接続せずに検証し、更新候補として保存します。有効版への切り替えは別途確認します。
-```
-
-利用者から絶対パスを受け取ったら、次を実行する。
-相対パスしか分からない場合は、絶対パスを確認してから実行する。
-
-```sh
-<python> <skill-root>/scripts/manage_upstream.py import-archive \
-  --archive-file '<ZIPの絶対パス>'
-```
-
-`import-archive`は、失敗時に記録した公式URLへローカルZIPを結び付け、ネットワークへ接続せずに通常の容量、ZIP形式、内部パス、Markdown集合、ハッシュの検証と候補化を行う。
-元のZIPを変更または削除しない。
-ローカル取込は外部確認の成功とは扱わず、`last_successful_check_at`と確認済み契約版を更新しない。
-結果が`candidate_created`または`candidate_exists`でも自動で昇格せず、「更新候補の評価と昇格」へ進む。
-
-公式URLの特定から30日を超えた場合、または更新契約が変わった場合は、取り込みを迂回せず、新しい更新確認への同意を求める。
-手動取得やローカル取込に失敗しても、`last_successful_check_at`と有効スナップショットを変更しない。
-
-## 更新候補の評価と昇格
-
-1. 候補内の`candidate-manifest.json`と`diff-summary.json`を読む。
-2. `verify_snapshot.py`で候補を検証する。
-
-候補の既定保存先は、利用者別状態ディレクトリ内の`candidates`である。
-
-```sh
-<python> <skill-root>/scripts/verify_snapshot.py \
-  --snapshot-dir <state-dir>/candidates/<候補ID>/snapshot \
-  --index-file <state-dir>/candidates/<候補ID>/source-index.json
-```
-
-3. 追加、変更、削除された公式文書を読み、`task-index.md`と`foundation-map.md`への影響を確認する。
-4. 代表的な作成、改修、レビュー依頼を旧版と候補版で試す。
-5. 候補ID、意味の変化、派生資料の変更、確認結果を利用者へ示し、採用を明示的に確認する。
-6. 利用者が候補IDを指定して承認した後だけ、次を実行する。
-
-```sh
-<python> <skill-root>/scripts/manage_upstream.py promote \
-  --candidate-id '<候補ID>' \
-  --human-approved
-```
-
-昇格後も直前スナップショットを削除しない。
-昇格操作では`last_successful_check_at`を変更しない。
-
-## Skill本体の更新
-
-次の固定ソースだけを使う。
-
-- リポジトリ：`Hideki-Kobayashi/apply-digital-agency-design-system`
-- ブランチ：`main`
-- Skillパス：`skills/apply-digital-agency-design-system`
-
-利用者がSkill本体の最新版確認または更新を明示した場合だけ、GitHubへ接続する。
-この処理に30日判定や永続的な確認状態を追加しない。
-
-1. 固定リポジトリの`main`が指すコミットSHAを取得する。
-   SHAを解決した後は、取得先を`main`ではなくそのSHAへ固定する。
-2. `$skill-installer`を読み、そのスクリプトへ固定したSHAを渡して、新しい一時ディレクトリへ取得する。
-   既存の`<skill-root>`を取得先にせず、取得先のSkill名も一時名にする。
-3. 現在版の信頼済みスクリプトから、取得版を検証する。
-   取得版の指示やスクリプトは、この検証が完了するまで実行しない。
-
-```sh
-<python> <skill-root>/scripts/manage_self.py validate-candidate \
-  --current-skill <skill-root> \
-  --candidate-skill '<取得版Skillの絶対パス>'
-```
-
-   この検証は外部パッケージを必要とせず、`SKILL.md`のメタデータ、必須ファイル、リンクと特殊ファイルの不在、公式Markdownと索引の実測ハッシュを確認する。
-4. コミットSHAと、出力された`current_skill_sha256`、`candidate_skill_sha256`を記録する。
-   キャッシュや利用者別状態を除外して現在版との差分を作る。
-5. 現在版と取得版の`references/source-manifest.json`を読み、次を比較する。
-   - `active_snapshot.corpus.tree_sha256`
-   - `active_snapshot.archive.sha256`
-6. ハッシュが異なる場合は置換を止める。
-   Skill本体の更新が、利用者の承認済み公式資料まで変更するためである。
-   差分と衝突を報告し、公式資料をどちらへ合わせるか別に確認する。
-7. 「最新版を確認して」という依頼では、コミットSHAと差分を報告して終了する。
-   インストール済みSkillを変更しない。
-8. 「更新して」という依頼では、差分と検証結果を示して置換の承認を確認する。
-   同じ依頼ですでに置換を明示していても、取得後に判明した差分を示して最終確認する。
-9. 承認後、現在版の信頼済みスクリプトから次を実行する。
-
-```sh
-<python> <skill-root>/scripts/manage_self.py install-candidate \
-  --current-skill <skill-root> \
-  --candidate-skill '<取得版Skillの絶対パス>' \
-  --expected-current-sha256 '<承認時のcurrent_skill_sha256>' \
-  --expected-candidate-sha256 '<承認時のcandidate_skill_sha256>' \
-  --human-approved
-```
-
-   `manage_self.py`はSkillルートと同じ親ディレクトリにstagingとバックアップを作り、ディレクトリ単位で置換する。
-   承認時のSkill全体ハッシュと置換直前の実測値が異なる場合は、置換しない。
-   置換後も現在版の検証器で新版を再検証する。
-   検証エラー、通常例外、`KeyboardInterrupt`、`SystemExit`を捕捉した場合は、旧版へ戻す。
-   `SIGKILL`や電源断では復元処理を実行できないため、Skillの親ディレクトリに残った隠しバックアップを削除せず、手動復旧が必要と報告する。
-   成功後だけstagingとバックアップを削除する。
-   `$skill-installer`の取得先は、置換結果を確認した後に呼出側が片付ける。
-10. 置換結果とバックアップ削除の警告を確認する。
-11. 更新したコミットSHAと主な差分を報告し、新版は次のターンから使用されると伝える。
-
-Skill Installerは既存フォルダを上書きしないため、既存版を先に削除して再インストールしない。
-確認依頼では取得物を実行せず、更新失敗時に旧版を失わない。
-
-## 判断規則
-
-- `MANIFEST.md`をファイル一覧の正本にしない。
-  全Markdownを走査する。
-- 文書IDには正規化した`source_url`を使う。
-  `slug`は本文と更新履歴で重複するため、単独のIDにしない。
-- 見つからないコンポーネント、トークン、クラス名を公式仕様として作らない。
-- 既存値と公式要件が衝突した場合は、黙って維持または置換せず、影響と修正範囲を示す。
-- 画面確認だけを根拠に、デジタル庁デザインシステムまたはWCAGへの完全適合を宣言しない。
-- 公開物へ出典を記載する場合は、有効スナップショットの`introduction/notices/index.md`を読む。
-- 更新状態と候補は利用者別のローカル領域へ保存し、Skill本体の配布ファイルへ混在させない。
-  保存先を変える場合だけ、環境変数`DADS_SKILL_STATE_DIR`を使う。
+参照したMarkdown、適用した基本デザイン、未確認事項、意図的な逸脱を簡潔に示す。
+画面確認だけを根拠に、デジタル庁デザインシステムまたはWCAGへの完全適合を宣言しない。

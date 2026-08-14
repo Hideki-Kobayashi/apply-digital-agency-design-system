@@ -1,88 +1,76 @@
 # apply-digital-agency-design-system
 
-デジタル庁デザインシステムの公式Markdownを根拠に、WebページとUIコンポーネントの作成、改修、レビューを支援する非公式Codex Skillです。
+デジタル庁デザインシステムの公式Markdownを根拠に、WebページとUIコンポーネントの作成、改修、レビューを支援する非公式Agent Skillです。
+CodexとClaude Codeで利用できます。
 
-デジタル庁が提供、承認、提携または推奨しているSkillではありません。
-
-## できること
-
-- 新規ページに必要な基本デザインを整理する。
-- 既存UIを、維持、移行、意図的な逸脱に分けて改修する。
-- 個別コンポーネントに必要な公式資料を選び、実装またはレビューする。
-- 公式の選択肢、既定値、例、原則、要件、固定値を区別する。
-- デジタル庁が配布するMarkdownの更新を確認する。
-
-通常作業では外部通信を行いません。
+デジタル庁が提供、承認、提携、推奨しているSkillではありません。
 
 ## 必要なもの
 
-- Codex
+- Agent Skillsに対応したCodexまたはClaude Code
 - Python 3.10以上
 
-macOS、Linux、Windowsに対応しています。
+[`ax`](https://github.com/yusukebe/ax)がある場合、Skillはデジタル庁の公式ページとZIPの取得に使います。
+`ax`がない場合は、ZIPを手動でダウンロードして導入できます。
 
-公式資料の更新確認では、[`ax`](https://github.com/yusukebe/ax)が見つかれば自動で利用します。`ax`は推奨ですが必須ではありません。
+## インストール
 
-## インストールと更新
+### npxを使う
 
-Codexへ次のように依頼してください。
+この方法ではNode.js 22.20.0以上が必要です。
+
+```sh
+npx skills add https://github.com/Hideki-Kobayashi/apply-digital-agency-design-system/tree/main/skills/apply-digital-agency-design-system -g -a codex -a claude-code
+```
+
+この方法は第三者製の[`skills`](https://github.com/vercel-labs/skills) CLIを使います。
+
+### CodexのSkill Installerを使う
+
+Codexへ次のように依頼します。
 
 ```text
 $skill-installerを使って、https://github.com/Hideki-Kobayashi/apply-digital-agency-design-system/tree/main/skills/apply-digital-agency-design-system からSkillをインストールしてください。
 ```
 
-インストール済みのSkill本体を確認または更新する場合は、このSkillへ明示的に依頼します。
+### 手動で配置する
 
-```text
-$apply-digital-agency-design-systemを使って、Skill本体の最新版を確認してください。
-```
+このリポジトリの`skills/apply-digital-agency-design-system`を、利用する製品のSkillフォルダへコピーします。
 
-```text
-$apply-digital-agency-design-systemを使って、Skill本体を最新版へ更新してください。
-```
-
-確認だけの依頼ではインストール済みファイルを変更しません。更新時は差分と検証結果を示し、利用者の承認後に置き換えます。
+- Codex：`$CODEX_HOME/skills/apply-digital-agency-design-system`（未設定時は`~/.codex/skills/apply-digital-agency-design-system`）
+- Claude Code：`~/.claude/skills/apply-digital-agency-design-system`
 
 ## 使い方
 
-```text
-$apply-digital-agency-design-systemを使って、この申請フォームを新規作成してください。
-```
+Skill名を指定するか、デジタル庁デザインシステムを使うことを依頼に含めます。
 
 ```text
-$apply-digital-agency-design-systemを使って、既存のボタンと入力欄をデジタル庁デザインシステムに沿って改修してください。
+$apply-digital-agency-design-systemを使って、この申請フォームを改修してください。
 ```
 
-```text
-$apply-digital-agency-design-systemを使って、この画面をレビューしてください。ファイルは変更しないでください。
-```
+初回利用時は、公式ZIPを取得してよいかSkillが確認します。
+取得後は、ローカルに保存したMarkdownを検索して使います。
 
-## 更新確認
+Skillは呼び出されるたびにローカル状態を確認します。
+前回の公式確認から30日（720時間）以上経過している場合だけ、事前の同意を求めずに`ax`で[公式リソースページ](https://design.digital.go.jp/dads/resources/)を確認します。
+この確認はページを読んでZIP URLを比較するだけで、ZIPを取得しません。
 
-### 公式資料
+確認に成功したら、差分の有無にかかわらず確認日時を更新します。
+差分がなければ、そのまま作業を続けます。
+その回の確認で新しいZIP URLが見つかった場合だけ、ZIPの取得と置換を行ってよいか確認します。
+更新を見送った場合も、同じ案内は次の公式確認まで繰り返しません。
+最新版の確認または更新を明示的に依頼した場合は、30日未満でも確認します。
 
-前回の成功確認から30日以上経過すると、依頼された作業を先に完了してから確認を提案します。利用者が同意するまで公式サイトへ接続しません。
-
-変更が見つかった場合は候補として保存し、別の承認があるまで利用中の公式資料を切り替えません。ZIPを自動取得できない場合は、特定済みの公式URLから手動で保存する方法を案内することがあります。
-
-```text
-$apply-digital-agency-design-systemを使って、公式資料の最新版を確認してください。
-```
-
-### Skill本体
-
-Skill本体は自動確認しません。「Skill本体の最新版を確認して」または「Skill本体を更新して」という明示的な依頼があった場合だけ、GitHubの公開版と比較します。
-
-公式資料の更新確認への同意を、Skill本体の更新許可として扱いません。
+`ax`がない場合または確認に失敗した場合は、公式ページまたはZIP URLから最新のZIPを手動でダウンロードするよう案内します。
+初回はそのZIPを導入し、導入済みの場合は先に差分だけを確認します。
+差分がある場合だけ適用の同意を求めます。
+失敗した確認は、確認済みとして記録しません。
 
 ## ライセンスと出典
 
-独自に作成したコードと文書にはMIT Licenseを適用し、デジタル庁由来の公式Markdownと派生資料にはデジタル庁の利用条件を適用します。詳細は[`LICENSE`](LICENSE)と[`NOTICE.md`](NOTICE.md)を確認してください。
+独自に作成したコードと文書にはMIT Licenseを適用し、デジタル庁由来のコンテンツにはデジタル庁の利用条件を適用します。
+詳細は[`LICENSE`](LICENSE)と[`NOTICE.md`](NOTICE.md)を確認してください。
 
-出典：デジタル庁デザインシステムウェブサイト https://design.digital.go.jp/dads/
+出典：[デジタル庁デザインシステムウェブサイト](https://design.digital.go.jp/dads/)
 
-デジタル庁デザインシステムウェブサイト https://design.digital.go.jp/dads/ をもとにHideki-KobayashiがCodex Skill向けに加工して作成。
-
-## 問題報告
-
-誤った参照、公式資料との差異、更新確認の不具合は[GitHub Issues](https://github.com/Hideki-Kobayashi/apply-digital-agency-design-system/issues)で報告してください。
+デジタル庁デザインシステムウェブサイトをもとにHideki-KobayashiがAgent Skill向けに加工して作成。

@@ -1,4 +1,4 @@
 interface:
   display_name: "デジタル庁デザインシステム（非公式）"
-  short_description: "公式資料を根拠にWeb UIを設計、実装、レビューし、資料とSkillを更新"
+  short_description: "公式DADS資料に沿ってWeb UIを設計、実装、レビュー"
   default_prompt: "$apply-digital-agency-design-systemを使って、このWeb UIをデジタル庁デザインシステムに沿ってレビューしてください。"

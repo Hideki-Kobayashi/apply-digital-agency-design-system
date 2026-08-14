@@ -1,28 +1,25 @@
-# License scope
+MIT License
 
-This repository contains material under separate terms.
+Copyright (c) 2026 Hideki-Kobayashi
 
-## MIT-licensed original material
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-Except for the Digital Agency material described below, original source code,
-tests, workflow instructions, repository documentation, and metadata created
-for this project are licensed under the MIT License in `LICENSES/MIT.txt`.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-## Digital Agency Design System material
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
-The following material originates from, reproduces, summarizes, indexes, or
-adapts the Digital Agency Design System:
-
-- `skills/apply-digital-agency-design-system/references/upstream/**`
-- `skills/apply-digital-agency-design-system/references/foundation-map.md`
-- `skills/apply-digital-agency-design-system/references/task-index.md`
-- Any portions of other files that reproduce or adapt Digital Agency Design
-  System content
-
-That material is not relicensed under the MIT License. It is used under the
-Digital Agency's applicable terms, including the Public Data License 1.0 and
-the source-specific attribution and modification requirements described in
-`NOTICE.md`.
-
-Third-party rights, logos, trademarks, fonts, icons, and other excluded
-material remain subject to their respective terms.
+The Digital Agency Design System Markdown downloaded by this Skill is not
+relicensed under the MIT License. See NOTICE.md for the applicable terms and
+attribution.
